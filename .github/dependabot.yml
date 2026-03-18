@@ -1,0 +1,51 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(core)"
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /stripe
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(stripe)"
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /paypal
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(paypal)"
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gomod
+    directory: /razorpay
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(razorpay)"
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - ci
+    open-pull-requests-limit: 5
