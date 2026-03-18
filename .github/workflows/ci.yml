@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.24"]
+        module: [".", "./stripe", "./paypal", "./razorpay"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Test ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
+        run: go test -race -count=1 ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+      - name: Run tests with coverage
+        run: |
+          go test -race -coverprofile=coverage-core.out -covermode=atomic ./...
+          cd stripe && go test -race -coverprofile=../coverage-stripe.out -covermode=atomic ./... && cd ..
+          cd paypal && go test -race -coverprofile=../coverage-paypal.out -covermode=atomic ./... && cd ..
+          cd razorpay && go test -race -coverprofile=../coverage-razorpay.out -covermode=atomic ./... && cd ..
+          # Merge coverage files
+          cat coverage-core.out > coverage.out
+          tail -n +2 coverage-stripe.out >> coverage.out
+          tail -n +2 coverage-paypal.out >> coverage.out
+          tail -n +2 coverage-razorpay.out >> coverage.out
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [".", "./stripe", "./paypal", "./razorpay"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11
+          working-directory: ${{ matrix.module }}
+          args: --timeout=5m
+
+  bench:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+      - name: Run benchmarks
+        run: |
+          go test -bench=. -benchmem ./...
+          cd stripe && go test -bench=. -benchmem ./... && cd ..
+          cd paypal && go test -bench=. -benchmem ./... && cd ..
+          cd razorpay && go test -bench=. -benchmem ./... && cd ..
