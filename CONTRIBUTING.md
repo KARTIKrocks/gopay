@@ -8,7 +8,7 @@ Thanks for your interest in contributing!
 2. Clone your fork: `git clone https://github.com/<username>/gopay.git`
 3. Create a branch: `git checkout -b my-feature`
 4. Make your changes
-5. Run checks: `make ci`
+5. Run checks: `make all`
 6. Push and open a pull request
 
 ## Development
@@ -24,7 +24,7 @@ Thanks for your interest in contributing!
 make test        # run tests with race detector
 make bench       # run benchmarks
 make lint        # run linter
-make ci          # run all checks
+make all          # run all checks
 ```
 
 ### Code Style
@@ -39,7 +39,7 @@ make ci          # run all checks
 - Keep PRs focused on a single change
 - Include tests for new functionality
 - Update documentation if the public API changes
-- Ensure `make ci` passes before requesting review
+- Ensure `make all` passes before requesting review
 
 ## Reporting Issues
 

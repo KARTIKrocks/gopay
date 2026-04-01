@@ -4,7 +4,7 @@ MODULE_PATH = github.com/KARTIKrocks/gopay
 
 .PHONY: all ci test test-race coverage lint fmt vet tidy build bench clean release-prep release-local
 
-all: tidy fmt lint test
+all: tidy fmt vet lint build test
 
 ## CI: run lint and tests with race detector (used in CI pipelines)
 ci: fmt vet lint test-race
