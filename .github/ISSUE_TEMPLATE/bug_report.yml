@@ -66,4 +66,4 @@ body:
     id: additional
     attributes:
       label: Additional Context
-      description: Any other context, logs, or screenshots.
+      description: Any other context, logs, or screenshots. Please remove/redact API keys, tokens, passwords, or personal data from logs/screenshots before submitting.

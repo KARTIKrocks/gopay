@@ -3,6 +3,7 @@ package gopay
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -150,7 +151,9 @@ func (a *Amount) Validate() error {
 	if a.Currency == "" {
 		return ErrInvalidCurrency
 	}
-	if !validCurrencies[strings.ToUpper(a.Currency)] {
+	// Normalize to uppercase for validation
+	normalized := strings.ToUpper(strings.TrimSpace(a.Currency))
+	if !validCurrencies[normalized] {
 		return ErrInvalidCurrency
 	}
 	return nil
@@ -684,7 +687,11 @@ func (c *Client) CreatePayment(ctx context.Context, req *PaymentRequest) (*Payme
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	return c.provider.CreatePayment(ctx, req)
+	payment, err := c.provider.CreatePayment(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create payment: %w", err)
+	}
+	return payment, nil
 }
 
 // GetPayment retrieves a payment.
@@ -692,7 +699,11 @@ func (c *Client) GetPayment(ctx context.Context, paymentID string) (*Payment, er
 	if paymentID == "" {
 		return nil, ErrNotFound
 	}
-	return c.provider.GetPayment(ctx, paymentID)
+	payment, err := c.provider.GetPayment(ctx, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("get payment: %w", err)
+	}
+	return payment, nil
 }
 
 // CapturePayment captures an authorized payment.
@@ -705,7 +716,11 @@ func (c *Client) CapturePayment(ctx context.Context, paymentID string, amount *A
 			return nil, err
 		}
 	}
-	return c.provider.CapturePayment(ctx, paymentID, amount)
+	payment, err := c.provider.CapturePayment(ctx, paymentID, amount)
+	if err != nil {
+		return nil, fmt.Errorf("capture payment: %w", err)
+	}
+	return payment, nil
 }
 
 // CancelPayment cancels an authorized payment.
@@ -713,7 +728,11 @@ func (c *Client) CancelPayment(ctx context.Context, paymentID string) (*Payment,
 	if paymentID == "" {
 		return nil, ErrNotFound
 	}
-	return c.provider.CancelPayment(ctx, paymentID)
+	payment, err := c.provider.CancelPayment(ctx, paymentID)
+	if err != nil {
+		return nil, fmt.Errorf("cancel payment: %w", err)
+	}
+	return payment, nil
 }
 
 // Refund creates a refund.
@@ -721,7 +740,11 @@ func (c *Client) Refund(ctx context.Context, req *RefundRequest) (*Refund, error
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	return c.provider.Refund(ctx, req)
+	refund, err := c.provider.Refund(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("refund: %w", err)
+	}
+	return refund, nil
 }
 
 // FullRefund creates a full refund for a payment.
@@ -730,7 +753,11 @@ func (c *Client) FullRefund(ctx context.Context, paymentID string) (*Refund, err
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	return c.provider.Refund(ctx, req)
+	refund, err := c.provider.Refund(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("full refund: %w", err)
+	}
+	return refund, nil
 }
 
 // GetRefund retrieves a refund.
@@ -738,7 +765,11 @@ func (c *Client) GetRefund(ctx context.Context, refundID string) (*Refund, error
 	if refundID == "" {
 		return nil, ErrNotFound
 	}
-	return c.provider.GetRefund(ctx, refundID)
+	refund, err := c.provider.GetRefund(ctx, refundID)
+	if err != nil {
+		return nil, fmt.Errorf("get refund: %w", err)
+	}
+	return refund, nil
 }
 
 // VerifyWebhook verifies and parses a webhook event (if supported).
@@ -747,7 +778,11 @@ func (c *Client) VerifyWebhook(ctx context.Context, payload []byte, headers map[
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	return wp.VerifyWebhook(ctx, payload, headers)
+	event, err := wp.VerifyWebhook(ctx, payload, headers)
+	if err != nil {
+		return nil, fmt.Errorf("verify webhook: %w", err)
+	}
+	return event, nil
 }
 
 // Provider returns the underlying provider.
@@ -769,61 +804,107 @@ func (c *Client) CreateCustomer(ctx context.Context, req *CustomerRequest) (*Cus
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	return cp.CreateCustomer(ctx, req)
+	customer, err := cp.CreateCustomer(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create customer: %w", err)
+	}
+	return customer, nil
 }
 
 // GetCustomer retrieves a customer (if supported).
 func (c *Client) GetCustomer(ctx context.Context, customerID string) (*Customer, error) {
+	if customerID == "" {
+		return nil, errors.New("gopay: customer ID required")
+	}
 	cp, ok := c.provider.(CustomerProvider)
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	return cp.GetCustomer(ctx, customerID)
+	customer, err := cp.GetCustomer(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("get customer: %w", err)
+	}
+	return customer, nil
 }
 
 // UpdateCustomer updates a customer (if supported).
 func (c *Client) UpdateCustomer(ctx context.Context, customerID string, req *CustomerRequest) (*Customer, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
 	cp, ok := c.provider.(CustomerProvider)
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	return cp.UpdateCustomer(ctx, customerID, req)
+	customer, err := cp.UpdateCustomer(ctx, customerID, req)
+	if err != nil {
+		return nil, fmt.Errorf("update customer: %w", err)
+	}
+	return customer, nil
 }
 
 // DeleteCustomer deletes a customer (if supported).
 func (c *Client) DeleteCustomer(ctx context.Context, customerID string) error {
+	if customerID == "" {
+		return errors.New("gopay: customer ID required")
+	}
 	cp, ok := c.provider.(CustomerProvider)
 	if !ok {
 		return ErrUnsupported
 	}
-	return cp.DeleteCustomer(ctx, customerID)
+	if err := cp.DeleteCustomer(ctx, customerID); err != nil {
+		return fmt.Errorf("delete customer: %w", err)
+	}
+	return nil
 }
 
 // AttachPaymentMethod attaches a payment method to a customer (if supported).
 func (c *Client) AttachPaymentMethod(ctx context.Context, customerID, paymentMethodID string) error {
+	if customerID == "" {
+		return errors.New("gopay: customer ID required")
+	}
+	if paymentMethodID == "" {
+		return errors.New("gopay: payment method ID required")
+	}
 	pmp, ok := c.provider.(PaymentMethodProvider)
 	if !ok {
 		return ErrUnsupported
 	}
-	return pmp.AttachPaymentMethod(ctx, customerID, paymentMethodID)
+	if err := pmp.AttachPaymentMethod(ctx, customerID, paymentMethodID); err != nil {
+		return fmt.Errorf("attach payment method: %w", err)
+	}
+	return nil
 }
 
 // DetachPaymentMethod detaches a payment method from a customer (if supported).
 func (c *Client) DetachPaymentMethod(ctx context.Context, paymentMethodID string) error {
+	if paymentMethodID == "" {
+		return errors.New("gopay: payment method ID required")
+	}
 	pmp, ok := c.provider.(PaymentMethodProvider)
 	if !ok {
 		return ErrUnsupported
 	}
-	return pmp.DetachPaymentMethod(ctx, paymentMethodID)
+	if err := pmp.DetachPaymentMethod(ctx, paymentMethodID); err != nil {
+		return fmt.Errorf("detach payment method: %w", err)
+	}
+	return nil
 }
 
 // ListPaymentMethods lists payment methods for a customer (if supported).
 func (c *Client) ListPaymentMethods(ctx context.Context, customerID string) ([]*PaymentMethod, error) {
+	if customerID == "" {
+		return nil, errors.New("gopay: customer ID required")
+	}
 	pmp, ok := c.provider.(PaymentMethodProvider)
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	return pmp.ListPaymentMethods(ctx, customerID)
+	methods, err := pmp.ListPaymentMethods(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("list payment methods: %w", err)
+	}
+	return methods, nil
 }
 
 // WebhookEvent represents a parsed webhook event.

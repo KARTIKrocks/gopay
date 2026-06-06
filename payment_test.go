@@ -295,7 +295,10 @@ func TestClientGetPayment(t *testing.T) {
 
 	// Create then get
 	req := NewPaymentRequest(USD(500)).WithPaymentMethod("pm_test")
-	payment, _ := client.CreatePayment(ctx, req)
+	payment, err := client.CreatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
 	got, err := client.GetPayment(ctx, payment.ID)
 	if err != nil {
@@ -315,7 +318,10 @@ func TestClientCapturePayment(t *testing.T) {
 	req := NewPaymentRequest(USD(1000)).
 		WithPaymentMethod("pm_test").
 		WithCaptureMethod(CaptureManual)
-	payment, _ := client.CreatePayment(ctx, req)
+	payment, err := client.CreatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
 	if payment.Status != PaymentStatusRequiresCapture {
 		t.Fatalf("status = %s, want requires_capture", payment.Status)
@@ -343,7 +349,10 @@ func TestClientCancelPayment(t *testing.T) {
 	req := NewPaymentRequest(USD(1000)).
 		WithPaymentMethod("pm_test").
 		WithCaptureMethod(CaptureManual)
-	payment, _ := client.CreatePayment(ctx, req)
+	payment, err := client.CreatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
 	canceled, err := client.CancelPayment(ctx, payment.ID)
 	if err != nil {
@@ -356,7 +365,10 @@ func TestClientCancelPayment(t *testing.T) {
 	// Canceling a succeeded payment should fail
 	mock.Reset()
 	req2 := NewPaymentRequest(USD(500)).WithPaymentMethod("pm_test")
-	p2, _ := client.CreatePayment(ctx, req2)
+	p2, err := client.CreatePayment(ctx, req2)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 	_, err = client.CancelPayment(ctx, p2.ID)
 	if err == nil {
 		t.Error("expected error canceling succeeded payment")
@@ -370,7 +382,10 @@ func TestClientRefund(t *testing.T) {
 
 	// Create payment
 	req := NewPaymentRequest(USD(1000)).WithPaymentMethod("pm_test")
-	payment, _ := client.CreatePayment(ctx, req)
+	payment, err := client.CreatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
 	// Full refund
 	refund, err := client.FullRefund(ctx, payment.ID)
@@ -400,7 +415,10 @@ func TestClientPartialRefund(t *testing.T) {
 	ctx := context.Background()
 
 	req := NewPaymentRequest(USD(1000)).WithPaymentMethod("pm_test")
-	payment, _ := client.CreatePayment(ctx, req)
+	payment, err := client.CreatePayment(ctx, req)
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
 
 	refundReq := NewRefundRequest(payment.ID).
 		WithAmount(USD(300)).
@@ -468,10 +486,13 @@ func TestClientPaymentMethods(t *testing.T) {
 	ctx := context.Background()
 
 	// Create customer first
-	cust, _ := client.CreateCustomer(ctx, NewCustomerRequest("test@example.com"))
+	cust, err := client.CreateCustomer(ctx, NewCustomerRequest("test@example.com"))
+	if err != nil {
+		t.Fatalf("CreateCustomer failed: %v", err)
+	}
 
 	// Attach payment method
-	err := mock.AttachPaymentMethod(ctx, cust.ID, "pm_test")
+	err = client.AttachPaymentMethod(ctx, cust.ID, "pm_test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

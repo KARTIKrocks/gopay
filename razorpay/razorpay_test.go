@@ -506,7 +506,10 @@ func TestCreatePaymentHTTP(t *testing.T) {
 			t.Errorf("BasicAuth = (%s, %s, %v)", user, pass, ok)
 		}
 
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
 		if !strings.Contains(string(body), `"amount":1999`) {
 			t.Errorf("body missing amount: %s", body)
 		}
@@ -515,7 +518,9 @@ func TestCreatePaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"order_001","amount":1999,"currency":"INR","status":"created","receipt":"","notes":{},"created_at":1700000000}`))
+		if _, err := w.Write([]byte(`{"id":"order_001","amount":1999,"currency":"INR","status":"created","receipt":"","notes":{},"created_at":1700000000}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	ctx := context.Background()
@@ -543,7 +548,9 @@ func TestGetPaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"order_001","amount":5000,"currency":"INR","status":"paid","receipt":"rcpt_1","notes":{"key":"val"},"created_at":1700000000}`))
+		if _, err := w.Write([]byte(`{"id":"order_001","amount":5000,"currency":"INR","status":"paid","receipt":"rcpt_1","notes":{"key":"val"},"created_at":1700000000}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	pay, err := p.GetPayment(context.Background(), "order_001")
@@ -765,7 +772,9 @@ func TestUpdateCustomerHTTP(t *testing.T) {
 func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		w.Write([]byte(`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`))
+		if _, err := w.Write([]byte(`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	req := gopay.NewPaymentRequest(gopay.INR(1999))
@@ -773,4 +782,132 @@ func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 	if !errors.Is(err, gopay.ErrProviderError) {
 		t.Errorf("expected ErrProviderError, got %v", err)
 	}
+}
+
+func TestCreatePaymentZeroAmount(t *testing.T) {
+	p, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewPaymentRequest(gopay.INR(0))
+	if err := req.Validate(); err != nil {
+		// Zero amount is valid in the core payment.go validation
+		// Just ensure it doesn't panic
+		_, _ = p.CreatePayment(context.Background(), req)
+	}
+}
+
+func TestCreatePaymentInvalidCurrency(t *testing.T) {
+	_, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewPaymentRequest(gopay.NewAmount(1000, "INVALID"))
+	err = req.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid currency")
+	}
+}
+
+func TestRefundZeroAmount(t *testing.T) {
+	p, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewRefundRequest("pay_123").WithAmount(gopay.INR(0))
+	if err := req.Validate(); err != nil {
+		// Zero amount is valid for refund validation
+		// Just ensure it doesn't panic
+		_, _ = p.Refund(context.Background(), req)
+	}
+}
+
+func TestCreateCustomerEmptyEmail(t *testing.T) {
+	_, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewCustomerRequest("")
+	err = req.Validate()
+	if err == nil {
+		t.Error("expected validation error for empty email")
+	}
+}
+
+func TestCreatePaymentTransportFailure(t *testing.T) {
+	// Create a provider with a failing transport
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewPaymentRequest(gopay.INR(1000))
+	_, err = p.CreatePayment(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+func TestRefundTransportFailure(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewRefundRequest("pay_123")
+	_, err = p.Refund(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+func TestCreateCustomerTransportFailure(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewCustomerRequest("test@example.com")
+	_, err = p.CreateCustomer(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+// failingTransport is a transport that always fails
+type failingTransport struct{}
+
+func (f *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("transport failure")
 }

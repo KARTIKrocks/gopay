@@ -66,7 +66,10 @@ lint: setup
 
 ## Run golangci-lint with auto-fix
 lint-fix: setup
-	golangci-lint run --fix ./...
+	@for mod in $(MODULES); do \
+		echo "==> Linting (fix) $$mod"; \
+		(cd $$mod && golangci-lint run --fix ./...) || exit 1; \
+	done
 
 ## Fix code formatting and linting issues
 fix: fmt lint-fix

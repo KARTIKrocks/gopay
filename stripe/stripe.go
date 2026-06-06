@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/KARTIKrocks/gopay"
@@ -87,6 +88,13 @@ func (p *Provider) Name() string {
 
 // CreatePayment creates a payment intent.
 func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest) (*gopay.Payment, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil payment request")
+	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil amount")
+	}
+
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(req.Amount.Value),
 		Currency: stripe.String(req.Amount.Currency),
@@ -179,6 +187,10 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 // Refund creates a refund.
 func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay.Refund, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil refund request")
+	}
+
 	params := &stripe.RefundParams{
 		PaymentIntent: stripe.String(req.PaymentID),
 	}
@@ -362,7 +374,13 @@ func (p *Provider) ListPaymentMethods(ctx context.Context, customerID string) ([
 // VerifyWebhook verifies and parses a Stripe webhook.
 // Headers should contain "Stripe-Signature".
 func (p *Provider) VerifyWebhook(_ context.Context, payload []byte, headers map[string]string) (*gopay.WebhookEvent, error) {
-	signature := headers["Stripe-Signature"]
+	var signature string
+	for k, v := range headers {
+		if strings.EqualFold(k, "Stripe-Signature") {
+			signature = v
+			break
+		}
+	}
 	if signature == "" {
 		return nil, fmt.Errorf("%w: missing Stripe-Signature header", gopay.ErrProviderError)
 	}
@@ -385,7 +403,7 @@ func (p *Provider) VerifyWebhook(_ context.Context, payload []byte, headers map[
 func ParseWebhook(payload []byte, signature, webhookSecret string) (*gopay.WebhookEvent, error) {
 	event, err := webhook.ConstructEvent(payload, signature, webhookSecret)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ParseWebhook: %w", err)
 	}
 
 	return &gopay.WebhookEvent{
