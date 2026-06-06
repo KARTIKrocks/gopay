@@ -30,6 +30,12 @@ jobs:
         with:
           languages: go
 
+      - name: Use local root module in sub-modules
+        run: |
+          for mod in stripe paypal razorpay; do
+            (cd $mod && go mod edit -replace github.com/KARTIKrocks/gopay=../)
+          done
+
       - name: Build all modules
         run: |
           go build ./...

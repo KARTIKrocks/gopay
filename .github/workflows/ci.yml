@@ -21,6 +21,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
+      - name: Use local root module
+        if: matrix.module != '.'
+        working-directory: ${{ matrix.module }}
+        run: go mod edit -replace github.com/KARTIKrocks/gopay=../
       - name: Test ${{ matrix.module }}
         working-directory: ${{ matrix.module }}
         run: go test -race -count=1 ./...
@@ -32,6 +36,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
+      - name: Use local root module in sub-modules
+        run: |
+          for mod in stripe paypal razorpay; do
+            (cd $mod && go mod edit -replace github.com/KARTIKrocks/gopay=../)
+          done
       - name: Run tests with coverage
         run: |
           go test -race -coverprofile=coverage-core.out -covermode=atomic ./...
@@ -59,9 +68,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
+      - name: Use local root module
+        if: matrix.module != '.'
+        working-directory: ${{ matrix.module }}
+        run: go mod edit -replace github.com/KARTIKrocks/gopay=../
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11
+          version: v2.12.2
           working-directory: ${{ matrix.module }}
           args: --timeout=5m
 
@@ -73,6 +86,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24"
+      - name: Use local root module in sub-modules
+        run: |
+          for mod in stripe paypal razorpay; do
+            (cd $mod && go mod edit -replace github.com/KARTIKrocks/gopay=../)
+          done
       - name: Run benchmarks
         run: |
           go test -bench=. -benchmem ./...
