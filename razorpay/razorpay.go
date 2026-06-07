@@ -81,6 +81,12 @@ func NewProvider(config Config) (*Provider, error) {
 
 	if config.HTTPClient == nil {
 		config.HTTPClient = &http.Client{Timeout: 30 * time.Second}
+	} else if config.HTTPClient.Timeout == 0 {
+		// Copy the caller's client before setting a default timeout so we never
+		// mutate a *http.Client the caller still owns.
+		clientCopy := *config.HTTPClient
+		clientCopy.Timeout = 30 * time.Second
+		config.HTTPClient = &clientCopy
 	}
 
 	if config.BaseURL == "" {
@@ -97,6 +103,10 @@ func (p *Provider) Name() string {
 
 // CreatePayment creates an order in Razorpay.
 func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest) (*gopay.Payment, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil payment request")
+	}
+
 	orderReq := orderRequest{
 		Amount:   req.Amount.Value,
 		Currency: req.Amount.Currency,
@@ -226,7 +236,10 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 		captureReq["currency"] = existing.Amount.Currency
 	}
 
-	body, _ := json.Marshal(captureReq)
+	body, err := json.Marshal(captureReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshal capture request: %w", err)
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/payments/"+paymentID+"/capture", bytes.NewReader(body))
 	if err != nil {
@@ -266,6 +279,10 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 // Refund creates a refund.
 func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay.Refund, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil refund request")
+	}
+
 	refundReq := refundRequest{
 		Notes: req.Metadata,
 	}
@@ -344,6 +361,10 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 
 // CreateCustomer creates a customer.
 func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerRequest) (*gopay.Customer, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil customer request")
+	}
+
 	custReq := customerRequest{
 		Name:    req.Name,
 		Email:   req.Email,
@@ -637,6 +658,19 @@ func (p *Provider) mapCustomer(c *customer) *gopay.Customer {
 	}
 }
 
+// maxErrorBodySnippet bounds how much of an unparseable provider response body
+// is echoed into an error — enough to debug, without dumping an unbounded or
+// potentially sensitive payload.
+const maxErrorBodySnippet = 256
+
+// errorBodySnippet returns a length-bounded, printable form of an error body.
+func errorBodySnippet(body []byte) string {
+	if len(body) > maxErrorBodySnippet {
+		return string(body[:maxErrorBodySnippet]) + "…(truncated)"
+	}
+	return string(body)
+}
+
 func (p *Provider) parseError(body []byte) error {
 	var errResp struct {
 		Error struct {
@@ -647,7 +681,7 @@ func (p *Provider) parseError(body []byte) error {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("%w: %s", gopay.ErrProviderError, string(body))
+		return fmt.Errorf("%w: %s", gopay.ErrProviderError, errorBodySnippet(body))
 	}
 
 	switch errResp.Error.Code {
