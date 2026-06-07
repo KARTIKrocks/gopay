@@ -367,7 +367,10 @@ func TestMapOrder(t *testing.T) {
 		},
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.ID != "ORDER-123" {
 		t.Errorf("ID = %s, want ORDER-123", pay.ID)
@@ -420,7 +423,10 @@ func TestMapOrderWithAuthorization(t *testing.T) {
 		},
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.Status != gopay.PaymentStatusRequiresCapture {
 		t.Errorf("Status = %s, want requires_capture", pay.Status)
@@ -438,7 +444,10 @@ func TestMapOrderMinimal(t *testing.T) {
 		Status: "CREATED",
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.ID != "ORDER-EMPTY" {
 		t.Errorf("ID = %s, want ORDER-EMPTY", pay.ID)
@@ -460,7 +469,10 @@ func TestMapRefund(t *testing.T) {
 		Amount: amount{CurrencyCode: "USD", Value: "10.00"},
 	}
 
-	ref := p.mapRefund(r, "ORDER-123")
+	ref, err := p.mapRefund(r, "ORDER-123")
+	if err != nil {
+		t.Fatalf("mapRefund: %v", err)
+	}
 
 	if ref.ID != "REFUND-123" {
 		t.Errorf("ID = %s, want REFUND-123", ref.ID)

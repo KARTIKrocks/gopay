@@ -785,16 +785,10 @@ func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 }
 
 func TestCreatePaymentZeroAmount(t *testing.T) {
-	p, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
-	if err != nil {
-		t.Fatalf("NewProvider: %v", err)
-	}
-
-	req := gopay.NewPaymentRequest(gopay.INR(0))
-	if err := req.Validate(); err != nil {
-		// Zero amount is valid in the core payment.go validation
-		// Just ensure it doesn't panic
-		_, _ = p.CreatePayment(context.Background(), req)
+	// Zero is a valid amount per core validation (only negative values are
+	// rejected). Assert the invariant directly without any network call.
+	if err := gopay.NewPaymentRequest(gopay.INR(0)).Validate(); err != nil {
+		t.Fatalf("zero amount should be valid: %v", err)
 	}
 }
 
@@ -812,16 +806,10 @@ func TestCreatePaymentInvalidCurrency(t *testing.T) {
 }
 
 func TestRefundZeroAmount(t *testing.T) {
-	p, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
-	if err != nil {
-		t.Fatalf("NewProvider: %v", err)
-	}
-
-	req := gopay.NewRefundRequest("pay_123").WithAmount(gopay.INR(0))
-	if err := req.Validate(); err != nil {
-		// Zero amount is valid for refund validation
-		// Just ensure it doesn't panic
-		_, _ = p.Refund(context.Background(), req)
+	// Zero is a valid refund amount per core validation. Assert the invariant
+	// directly without any network call.
+	if err := gopay.NewRefundRequest("pay_123").WithAmount(gopay.INR(0)).Validate(); err != nil {
+		t.Fatalf("zero refund amount should be valid: %v", err)
 	}
 }
 

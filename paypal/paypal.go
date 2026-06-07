@@ -210,6 +210,9 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	if req == nil {
 		return nil, fmt.Errorf("gopay: nil payment request")
 	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil payment amount")
+	}
 
 	token, err := p.getAccessToken(ctx)
 	if err != nil {
@@ -272,7 +275,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // GetPayment retrieves an order.
@@ -309,7 +312,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // CapturePayment captures an authorized order.
@@ -390,7 +393,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // authorizeOrder authorizes an AUTHORIZE-intent order after buyer approval.
@@ -588,7 +591,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 		return nil, err
 	}
 
-	return p.mapRefund(&refundResp, req.PaymentID), nil
+	return p.mapRefund(&refundResp, req.PaymentID)
 }
 
 // GetRefund retrieves a refund.
@@ -625,7 +628,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 		return nil, err
 	}
 
-	return p.mapRefund(&refundResp, ""), nil
+	return p.mapRefund(&refundResp, "")
 }
 
 // VerifyWebhook verifies and parses a PayPal webhook event.
@@ -772,7 +775,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 	return p.accessToken, nil
 }
 
-func (p *Provider) mapOrder(o *order) *gopay.Payment {
+func (p *Provider) mapOrder(o *order) (*gopay.Payment, error) {
 	pay := &gopay.Payment{
 		ID:        o.ID,
 		Status:    mapOrderStatus(o.Status),
@@ -787,7 +790,10 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 
 	if len(o.PurchaseUnits) > 0 {
 		pu := o.PurchaseUnits[0]
-		amountValue, _ := fromDecimal(pu.Amount.Value, pu.Amount.CurrencyCode)
+		amountValue, err := fromDecimal(pu.Amount.Value, pu.Amount.CurrencyCode)
+		if err != nil {
+			return nil, fmt.Errorf("parse order amount: %w", err)
+		}
 		pay.Amount = gopay.NewAmount(amountValue, pu.Amount.CurrencyCode)
 		pay.Description = pu.Description
 
@@ -797,7 +803,10 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 			}
 			if len(pu.Payments.Captures) > 0 {
 				pay.Raw["capture_id"] = pu.Payments.Captures[0].ID
-				capturedValue, _ := fromDecimal(pu.Payments.Captures[0].Amount.Value, pu.Payments.Captures[0].Amount.CurrencyCode)
+				capturedValue, err := fromDecimal(pu.Payments.Captures[0].Amount.Value, pu.Payments.Captures[0].Amount.CurrencyCode)
+				if err != nil {
+					return nil, fmt.Errorf("parse captured amount: %w", err)
+				}
 				pay.AmountCaptured = capturedValue
 			}
 		}
@@ -810,7 +819,7 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 		}
 	}
 
-	return pay
+	return pay, nil
 }
 
 func mapOrderStatus(status string) gopay.PaymentStatus {
@@ -832,8 +841,11 @@ func mapOrderStatus(status string) gopay.PaymentStatus {
 	}
 }
 
-func (p *Provider) mapRefund(r *refund, paymentID string) *gopay.Refund {
-	amountValue, _ := fromDecimal(r.Amount.Value, r.Amount.CurrencyCode)
+func (p *Provider) mapRefund(r *refund, paymentID string) (*gopay.Refund, error) {
+	amountValue, err := fromDecimal(r.Amount.Value, r.Amount.CurrencyCode)
+	if err != nil {
+		return nil, fmt.Errorf("parse refund amount: %w", err)
+	}
 	return &gopay.Refund{
 		ID:        r.ID,
 		PaymentID: paymentID,
@@ -845,7 +857,7 @@ func (p *Provider) mapRefund(r *refund, paymentID string) *gopay.Refund {
 			"id":     r.ID,
 			"status": r.Status,
 		},
-	}
+	}, nil
 }
 
 func mapRefundStatus(status string) gopay.RefundStatus {
@@ -863,19 +875,6 @@ func mapRefundStatus(status string) gopay.RefundStatus {
 	}
 }
 
-// maxErrorBodySnippet bounds how much of an unparseable provider response body
-// is echoed into an error — enough to debug, without dumping an unbounded or
-// potentially sensitive payload.
-const maxErrorBodySnippet = 256
-
-// errorBodySnippet returns a length-bounded, printable form of an error body.
-func errorBodySnippet(body []byte) string {
-	if len(body) > maxErrorBodySnippet {
-		return string(body[:maxErrorBodySnippet]) + "…(truncated)"
-	}
-	return string(body)
-}
-
 func (p *Provider) parseError(body []byte) error {
 	var errResp struct {
 		Name    string `json:"name"`
@@ -887,7 +886,7 @@ func (p *Provider) parseError(body []byte) error {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("%w: %s", gopay.ErrProviderError, errorBodySnippet(body))
+		return fmt.Errorf("%w: unparseable provider error response", gopay.ErrProviderError)
 	}
 
 	switch errResp.Name {

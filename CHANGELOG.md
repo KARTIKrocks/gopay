@@ -17,6 +17,8 @@ and sentinel errors remain matchable with `errors.Is`.
   `(-1.00, 0)` range (e.g. `-50` now renders `-0.50` instead of `0.50`).
 - **PayPal**: `VerifyWebhook` surfaces provider errors on HTTP 4xx/5xx responses
   instead of misinterpreting them as a verification result.
+- **PayPal**: malformed decimal amounts in provider responses now surface as an
+  error instead of silently mapping to a zero amount.
 - **Stripe**: `Stripe-Signature` header lookup is now case-insensitive, matching
   HTTP header semantics.
 
@@ -28,12 +30,12 @@ and sentinel errors remain matchable with `errors.Is`.
   return `ErrNotFound`, consistent with the existing payment/refund methods.
 - **Core**: `Amount.Validate` canonicalizes the currency in place (trim +
   uppercase) so providers always receive a clean ISO 4217 code.
-- **Providers**: nil-request guards and `json.Marshal` error checks across
-  Stripe, PayPal, and Razorpay.
-- **PayPal / Razorpay**: a default 30s HTTP timeout is applied on a *copy* of the
+- **Providers**: nil-request and nil-amount guards plus `json.Marshal` error
+  checks across Stripe, PayPal, and Razorpay.
+- **PayPal / Razorpay**: a default 30s HTTP timeout is applied on a _copy_ of the
   caller's `*http.Client`, never mutating the client the caller still owns.
-- **Providers**: unparseable error responses include a length-bounded (256-byte)
-  body snippet instead of an unbounded dump.
+- **Providers**: unparseable error responses return a generic message and never
+  echo response-body bytes, avoiding any risk of leaking secrets.
 
 ### Tooling & Tests
 

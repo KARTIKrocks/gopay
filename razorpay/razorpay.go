@@ -106,6 +106,9 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	if req == nil {
 		return nil, fmt.Errorf("gopay: nil payment request")
 	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil payment amount")
+	}
 
 	orderReq := orderRequest{
 		Amount:   req.Amount.Value,
@@ -658,19 +661,6 @@ func (p *Provider) mapCustomer(c *customer) *gopay.Customer {
 	}
 }
 
-// maxErrorBodySnippet bounds how much of an unparseable provider response body
-// is echoed into an error — enough to debug, without dumping an unbounded or
-// potentially sensitive payload.
-const maxErrorBodySnippet = 256
-
-// errorBodySnippet returns a length-bounded, printable form of an error body.
-func errorBodySnippet(body []byte) string {
-	if len(body) > maxErrorBodySnippet {
-		return string(body[:maxErrorBodySnippet]) + "…(truncated)"
-	}
-	return string(body)
-}
-
 func (p *Provider) parseError(body []byte) error {
 	var errResp struct {
 		Error struct {
@@ -681,7 +671,7 @@ func (p *Provider) parseError(body []byte) error {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("%w: %s", gopay.ErrProviderError, errorBodySnippet(body))
+		return fmt.Errorf("%w: unparseable provider error response", gopay.ErrProviderError)
 	}
 
 	switch errResp.Error.Code {

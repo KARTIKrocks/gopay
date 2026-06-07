@@ -835,6 +835,9 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*Customer,
 
 // UpdateCustomer updates a customer (if supported).
 func (c *Client) UpdateCustomer(ctx context.Context, customerID string, req *CustomerRequest) (*Customer, error) {
+	if customerID == "" {
+		return nil, ErrNotFound
+	}
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
