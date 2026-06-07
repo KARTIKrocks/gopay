@@ -506,7 +506,10 @@ func TestCreatePaymentHTTP(t *testing.T) {
 			t.Errorf("BasicAuth = (%s, %s, %v)", user, pass, ok)
 		}
 
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
 		if !strings.Contains(string(body), `"amount":1999`) {
 			t.Errorf("body missing amount: %s", body)
 		}
@@ -515,7 +518,9 @@ func TestCreatePaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"order_001","amount":1999,"currency":"INR","status":"created","receipt":"","notes":{},"created_at":1700000000}`))
+		if _, err := w.Write([]byte(`{"id":"order_001","amount":1999,"currency":"INR","status":"created","receipt":"","notes":{},"created_at":1700000000}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	ctx := context.Background()
@@ -543,7 +548,9 @@ func TestGetPaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"order_001","amount":5000,"currency":"INR","status":"paid","receipt":"rcpt_1","notes":{"key":"val"},"created_at":1700000000}`))
+		if _, err := w.Write([]byte(`{"id":"order_001","amount":5000,"currency":"INR","status":"paid","receipt":"rcpt_1","notes":{"key":"val"},"created_at":1700000000}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	pay, err := p.GetPayment(context.Background(), "order_001")
@@ -566,13 +573,13 @@ func TestGetPaymentFallbackHTTP(t *testing.T) {
 		// Order endpoint returns 404
 		if r.URL.Path == "/orders/pay_001" {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"not found"}}`))
+			_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"not found"}}`))
 			return
 		}
 		// Falls back to payment endpoint
 		if r.URL.Path == "/payments/pay_001" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"id":"pay_001","amount":3000,"currency":"INR","status":"captured","method":"upi","description":"Test","amount_refunded":0,"error_code":"","error_description":"","notes":{},"created_at":1700000000}`))
+			_, _ = w.Write([]byte(`{"id":"pay_001","amount":3000,"currency":"INR","status":"captured","method":"upi","description":"Test","amount_refunded":0,"error_code":"","error_description":"","notes":{},"created_at":1700000000}`))
 			return
 		}
 
@@ -595,7 +602,7 @@ func TestGetPaymentFallbackHTTP(t *testing.T) {
 func TestGetPaymentNotFoundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"not found"}}`))
+		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"not found"}}`))
 	})
 
 	// The first call returns 404 (triggers fallback), fallback also 404
@@ -617,7 +624,7 @@ func TestCapturePaymentHTTP(t *testing.T) {
 			if !strings.Contains(string(body), `"amount":5000`) {
 				t.Errorf("capture body missing amount: %s", body)
 			}
-			w.Write([]byte(`{"id":"pay_001","amount":5000,"currency":"INR","status":"captured","method":"card","description":"","amount_refunded":0,"error_code":"","error_description":"","notes":{},"created_at":1700000000}`))
+			_, _ = w.Write([]byte(`{"id":"pay_001","amount":5000,"currency":"INR","status":"captured","method":"card","description":"","amount_refunded":0,"error_code":"","error_description":"","notes":{},"created_at":1700000000}`))
 			return
 		}
 
@@ -649,7 +656,7 @@ func TestRefundHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"rfnd_001","payment_id":"pay_001","amount":500,"currency":"INR","status":"processed","created_at":1700000000}`))
+		_, _ = w.Write([]byte(`{"id":"rfnd_001","payment_id":"pay_001","amount":500,"currency":"INR","status":"processed","created_at":1700000000}`))
 	})
 
 	req := gopay.NewRefundRequest("pay_001").
@@ -677,7 +684,7 @@ func TestGetRefundHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"rfnd_001","payment_id":"pay_001","amount":500,"currency":"INR","status":"processed","created_at":1700000000}`))
+		_, _ = w.Write([]byte(`{"id":"rfnd_001","payment_id":"pay_001","amount":500,"currency":"INR","status":"processed","created_at":1700000000}`))
 	})
 
 	ref, err := p.GetRefund(context.Background(), "rfnd_001")
@@ -704,7 +711,7 @@ func TestCreateCustomerHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"cust_001","name":"Test User","email":"test@example.com","contact":"+91123","notes":{},"created_at":1700000000}`))
+		_, _ = w.Write([]byte(`{"id":"cust_001","name":"Test User","email":"test@example.com","contact":"+91123","notes":{},"created_at":1700000000}`))
 	})
 
 	req := gopay.NewCustomerRequest("test@example.com").
@@ -730,7 +737,7 @@ func TestGetCustomerHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"cust_001","name":"Test User","email":"test@example.com","contact":"+91123","notes":{},"created_at":1700000000}`))
+		_, _ = w.Write([]byte(`{"id":"cust_001","name":"Test User","email":"test@example.com","contact":"+91123","notes":{},"created_at":1700000000}`))
 	})
 
 	cust, err := p.GetCustomer(context.Background(), "cust_001")
@@ -749,7 +756,7 @@ func TestUpdateCustomerHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"cust_001","name":"Updated","email":"new@example.com","contact":"+91456","notes":{},"created_at":1700000000}`))
+		_, _ = w.Write([]byte(`{"id":"cust_001","name":"Updated","email":"new@example.com","contact":"+91456","notes":{},"created_at":1700000000}`))
 	})
 
 	req := gopay.NewCustomerRequest("new@example.com").WithName("Updated")
@@ -765,7 +772,9 @@ func TestUpdateCustomerHTTP(t *testing.T) {
 func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		w.Write([]byte(`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`))
+		if _, err := w.Write([]byte(`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	req := gopay.NewPaymentRequest(gopay.INR(1999))
@@ -773,4 +782,120 @@ func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 	if !errors.Is(err, gopay.ErrProviderError) {
 		t.Errorf("expected ErrProviderError, got %v", err)
 	}
+}
+
+func TestCreatePaymentZeroAmount(t *testing.T) {
+	// Zero is a valid amount per core validation (only negative values are
+	// rejected). Assert the invariant directly without any network call.
+	if err := gopay.NewPaymentRequest(gopay.INR(0)).Validate(); err != nil {
+		t.Fatalf("zero amount should be valid: %v", err)
+	}
+}
+
+func TestCreatePaymentInvalidCurrency(t *testing.T) {
+	_, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewPaymentRequest(gopay.NewAmount(1000, "INVALID"))
+	err = req.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid currency")
+	}
+}
+
+func TestRefundZeroAmount(t *testing.T) {
+	// Zero is a valid refund amount per core validation. Assert the invariant
+	// directly without any network call.
+	if err := gopay.NewRefundRequest("pay_123").WithAmount(gopay.INR(0)).Validate(); err != nil {
+		t.Fatalf("zero refund amount should be valid: %v", err)
+	}
+}
+
+func TestCreateCustomerEmptyEmail(t *testing.T) {
+	_, err := NewProvider(Config{KeyID: "key_test", KeySecret: "secret_test"})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewCustomerRequest("")
+	err = req.Validate()
+	if err == nil {
+		t.Error("expected validation error for empty email")
+	}
+}
+
+func TestCreatePaymentTransportFailure(t *testing.T) {
+	// Create a provider with a failing transport
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewPaymentRequest(gopay.INR(1000))
+	_, err = p.CreatePayment(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+func TestRefundTransportFailure(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewRefundRequest("pay_123")
+	_, err = p.Refund(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+func TestCreateCustomerTransportFailure(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: &failingTransport{},
+		Timeout:   1 * time.Second,
+	}
+
+	p, err := NewProvider(Config{
+		KeyID:      "key_test",
+		KeySecret:  "secret_test",
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	req := gopay.NewCustomerRequest("test@example.com")
+	_, err = p.CreateCustomer(context.Background(), req)
+	if err == nil {
+		t.Error("expected transport failure error")
+	}
+}
+
+// failingTransport is a transport that always fails
+type failingTransport struct{}
+
+func (f *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("transport failure")
 }

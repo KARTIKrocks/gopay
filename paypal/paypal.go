@@ -38,29 +38,40 @@ func toDecimal(amount int64, currency string) string {
 	if isZeroDecimal(currency) {
 		return fmt.Sprintf("%d", amount)
 	}
-	whole := amount / 100
-	frac := amount % 100
-	if frac < 0 {
-		frac = -frac
+	sign := ""
+	if amount < 0 {
+		sign = "-"
 	}
-	return fmt.Sprintf("%d.%02d", whole, frac)
+	absAmount := amount
+	if absAmount < 0 {
+		absAmount = -absAmount
+	}
+	whole := absAmount / 100
+	frac := absAmount % 100
+	return fmt.Sprintf("%s%d.%02d", sign, whole, frac)
 }
 
 // fromDecimal converts a decimal string from the PayPal API to an amount in
 // smallest currency unit.
 // For standard currencies: "19.99" USD -> 1999, "5.00" EUR -> 500
 // For zero-decimal currencies: "500" JPY -> 500
-func fromDecimal(s string, currency string) int64 {
+func fromDecimal(s string, currency string) (int64, error) {
 	if isZeroDecimal(currency) {
 		// Strip any trailing decimals (e.g., "500.00" -> "500")
 		if idx := strings.IndexByte(s, '.'); idx >= 0 {
 			s = s[:idx]
 		}
-		v, _ := strconv.ParseInt(s, 10, 64)
-		return v
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid zero-decimal amount %q: %w", s, err)
+		}
+		return v, nil
 	}
 	parts := strings.SplitN(s, ".", 2)
-	whole, _ := strconv.ParseInt(parts[0], 10, 64)
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid amount whole part %q: %w", parts[0], err)
+	}
 	var frac int64
 	if len(parts) == 2 {
 		fracStr := parts[1]
@@ -69,17 +80,25 @@ func fromDecimal(s string, currency string) int64 {
 		case len(fracStr) == 0:
 			frac = 0
 		case len(fracStr) == 1:
-			frac, _ = strconv.ParseInt(fracStr, 10, 64)
+			var err error
+			frac, err = strconv.ParseInt(fracStr, 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid amount fraction %q: %w", fracStr, err)
+			}
 			frac *= 10
 		default:
-			frac, _ = strconv.ParseInt(fracStr[:2], 10, 64)
+			var err error
+			frac, err = strconv.ParseInt(fracStr[:2], 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid amount fraction %q: %w", fracStr[:2], err)
+			}
 		}
 	}
 	result := whole*100 + frac
 	if whole < 0 {
 		result = whole*100 - frac
 	}
-	return result
+	return result, nil
 }
 
 // maxResponseSize is the maximum response body size (10 MB).
@@ -140,7 +159,15 @@ func (c Config) WithWebhookID(webhookID string) Config {
 
 // WithHTTPClient sets a custom HTTP client.
 func (c Config) WithHTTPClient(client *http.Client) Config {
-	c.HTTPClient = client
+	if client != nil {
+		clientCopy := *client
+		if clientCopy.Timeout == 0 {
+			clientCopy.Timeout = 30 * time.Second
+		}
+		c.HTTPClient = &clientCopy
+	} else {
+		c.HTTPClient = client
+	}
 	return c
 }
 
@@ -180,6 +207,13 @@ func (p *Provider) Name() string {
 
 // CreatePayment creates an order in PayPal.
 func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest) (*gopay.Payment, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil payment request")
+	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil payment amount")
+	}
+
 	token, err := p.getAccessToken(ctx)
 	if err != nil {
 		return nil, err
@@ -241,7 +275,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // GetPayment retrieves an order.
@@ -278,7 +312,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // CapturePayment captures an authorized order.
@@ -324,7 +358,10 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 				"value":         toDecimal(amt.Value, amt.Currency),
 			},
 		}
-		body, _ := json.Marshal(captureReq)
+		body, err := json.Marshal(captureReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal capture request: %w", err)
+		}
 		bodyReader = bytes.NewReader(body)
 	}
 
@@ -356,7 +393,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 		return nil, err
 	}
 
-	return p.mapOrder(&o), nil
+	return p.mapOrder(&o)
 }
 
 // authorizeOrder authorizes an AUTHORIZE-intent order after buyer approval.
@@ -408,7 +445,10 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 				"value":         toDecimal(amt.Value, amt.Currency),
 			},
 		}
-		body, _ := json.Marshal(captureReq)
+		body, err := json.Marshal(captureReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal capture request: %w", err)
+		}
 		bodyReader = bytes.NewReader(body)
 	}
 
@@ -482,6 +522,10 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 // Refund creates a refund for a captured payment.
 func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay.Refund, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil refund request")
+	}
+
 	token, err := p.getAccessToken(ctx)
 	if err != nil {
 		return nil, err
@@ -510,7 +554,10 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 		refundReq["note_to_payer"] = string(req.Reason)
 	}
 
-	body, _ := json.Marshal(refundReq)
+	body, err := json.Marshal(refundReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshal refund request: %w", err)
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/payments/captures/"+captureID+"/refund", bytes.NewReader(body))
 	if err != nil {
@@ -544,7 +591,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 		return nil, err
 	}
 
-	return p.mapRefund(&refundResp, req.PaymentID), nil
+	return p.mapRefund(&refundResp, req.PaymentID)
 }
 
 // GetRefund retrieves a refund.
@@ -581,7 +628,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 		return nil, err
 	}
 
-	return p.mapRefund(&refundResp, ""), nil
+	return p.mapRefund(&refundResp, "")
 }
 
 // VerifyWebhook verifies and parses a PayPal webhook event.
@@ -628,6 +675,10 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, p.parseError(respBody)
 	}
 
 	var verifyResp struct {
@@ -724,7 +775,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 	return p.accessToken, nil
 }
 
-func (p *Provider) mapOrder(o *order) *gopay.Payment {
+func (p *Provider) mapOrder(o *order) (*gopay.Payment, error) {
 	pay := &gopay.Payment{
 		ID:        o.ID,
 		Status:    mapOrderStatus(o.Status),
@@ -739,7 +790,11 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 
 	if len(o.PurchaseUnits) > 0 {
 		pu := o.PurchaseUnits[0]
-		pay.Amount = gopay.NewAmount(fromDecimal(pu.Amount.Value, pu.Amount.CurrencyCode), pu.Amount.CurrencyCode)
+		amountValue, err := fromDecimal(pu.Amount.Value, pu.Amount.CurrencyCode)
+		if err != nil {
+			return nil, fmt.Errorf("parse order amount: %w", err)
+		}
+		pay.Amount = gopay.NewAmount(amountValue, pu.Amount.CurrencyCode)
 		pay.Description = pu.Description
 
 		if pu.Payments != nil {
@@ -748,7 +803,11 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 			}
 			if len(pu.Payments.Captures) > 0 {
 				pay.Raw["capture_id"] = pu.Payments.Captures[0].ID
-				pay.AmountCaptured = fromDecimal(pu.Payments.Captures[0].Amount.Value, pu.Payments.Captures[0].Amount.CurrencyCode)
+				capturedValue, err := fromDecimal(pu.Payments.Captures[0].Amount.Value, pu.Payments.Captures[0].Amount.CurrencyCode)
+				if err != nil {
+					return nil, fmt.Errorf("parse captured amount: %w", err)
+				}
+				pay.AmountCaptured = capturedValue
 			}
 		}
 	}
@@ -760,7 +819,7 @@ func (p *Provider) mapOrder(o *order) *gopay.Payment {
 		}
 	}
 
-	return pay
+	return pay, nil
 }
 
 func mapOrderStatus(status string) gopay.PaymentStatus {
@@ -782,11 +841,15 @@ func mapOrderStatus(status string) gopay.PaymentStatus {
 	}
 }
 
-func (p *Provider) mapRefund(r *refund, paymentID string) *gopay.Refund {
+func (p *Provider) mapRefund(r *refund, paymentID string) (*gopay.Refund, error) {
+	amountValue, err := fromDecimal(r.Amount.Value, r.Amount.CurrencyCode)
+	if err != nil {
+		return nil, fmt.Errorf("parse refund amount: %w", err)
+	}
 	return &gopay.Refund{
 		ID:        r.ID,
 		PaymentID: paymentID,
-		Amount:    gopay.NewAmount(fromDecimal(r.Amount.Value, r.Amount.CurrencyCode), r.Amount.CurrencyCode),
+		Amount:    gopay.NewAmount(amountValue, r.Amount.CurrencyCode),
 		Status:    mapRefundStatus(r.Status),
 		CreatedAt: r.CreateTime,
 		Provider:  p.Name(),
@@ -794,7 +857,7 @@ func (p *Provider) mapRefund(r *refund, paymentID string) *gopay.Refund {
 			"id":     r.ID,
 			"status": r.Status,
 		},
-	}
+	}, nil
 }
 
 func mapRefundStatus(status string) gopay.RefundStatus {
@@ -823,7 +886,7 @@ func (p *Provider) parseError(body []byte) error {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("%w: %s", gopay.ErrProviderError, string(body))
+		return fmt.Errorf("%w: unparseable provider error response", gopay.ErrProviderError)
 	}
 
 	switch errResp.Name {

@@ -150,7 +150,11 @@ func TestFromDecimal(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := fromDecimal(tt.decimal, tt.currency)
+		got, err := fromDecimal(tt.decimal, tt.currency)
+		if err != nil {
+			t.Errorf("fromDecimal(%q, %s) error: %v", tt.decimal, tt.currency, err)
+			continue
+		}
 		if got != tt.want {
 			t.Errorf("fromDecimal(%q, %s) = %d, want %d", tt.decimal, tt.currency, got, tt.want)
 		}
@@ -162,7 +166,11 @@ func TestRoundTrip(t *testing.T) {
 	values := []int64{0, 1, 10, 99, 100, 199, 1999, 10000, 123456, 999999}
 	for _, v := range values {
 		decimal := toDecimal(v, "USD")
-		back := fromDecimal(decimal, "USD")
+		back, err := fromDecimal(decimal, "USD")
+		if err != nil {
+			t.Errorf("USD round trip error: %d -> %q: %v", v, decimal, err)
+			continue
+		}
 		if back != v {
 			t.Errorf("USD round trip failed: %d -> %q -> %d", v, decimal, back)
 		}
@@ -171,7 +179,11 @@ func TestRoundTrip(t *testing.T) {
 	// Zero-decimal currencies
 	for _, v := range values {
 		decimal := toDecimal(v, "JPY")
-		back := fromDecimal(decimal, "JPY")
+		back, err := fromDecimal(decimal, "JPY")
+		if err != nil {
+			t.Errorf("JPY round trip error: %d -> %q: %v", v, decimal, err)
+			continue
+		}
 		if back != v {
 			t.Errorf("JPY round trip failed: %d -> %q -> %d", v, decimal, back)
 		}
@@ -355,7 +367,10 @@ func TestMapOrder(t *testing.T) {
 		},
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.ID != "ORDER-123" {
 		t.Errorf("ID = %s, want ORDER-123", pay.ID)
@@ -408,7 +423,10 @@ func TestMapOrderWithAuthorization(t *testing.T) {
 		},
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.Status != gopay.PaymentStatusRequiresCapture {
 		t.Errorf("Status = %s, want requires_capture", pay.Status)
@@ -426,7 +444,10 @@ func TestMapOrderMinimal(t *testing.T) {
 		Status: "CREATED",
 	}
 
-	pay := p.mapOrder(o)
+	pay, err := p.mapOrder(o)
+	if err != nil {
+		t.Fatalf("mapOrder: %v", err)
+	}
 
 	if pay.ID != "ORDER-EMPTY" {
 		t.Errorf("ID = %s, want ORDER-EMPTY", pay.ID)
@@ -448,7 +469,10 @@ func TestMapRefund(t *testing.T) {
 		Amount: amount{CurrencyCode: "USD", Value: "10.00"},
 	}
 
-	ref := p.mapRefund(r, "ORDER-123")
+	ref, err := p.mapRefund(r, "ORDER-123")
+	if err != nil {
+		t.Fatalf("mapRefund: %v", err)
+	}
 
 	if ref.ID != "REFUND-123" {
 		t.Errorf("ID = %s, want REFUND-123", ref.ID)
@@ -476,7 +500,9 @@ func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/oauth2/token" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(tokenResponse))
+			if _, err := w.Write([]byte(tokenResponse)); err != nil {
+				t.Errorf("failed to write token response: %v", err)
+			}
 			return
 		}
 		handler(w, r)
@@ -510,7 +536,10 @@ func TestCreatePaymentHTTP(t *testing.T) {
 			t.Errorf("PayPal-Request-Id = %s, want idem_123", idem)
 		}
 
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
 		if !strings.Contains(string(body), `"intent":"CAPTURE"`) {
 			t.Errorf("body missing intent CAPTURE: %s", body)
 		}
@@ -519,14 +548,16 @@ func TestCreatePaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		if _, err := w.Write([]byte(`{
 			"id": "ORDER-001",
 			"intent": "CAPTURE",
 			"status": "CREATED",
 			"purchase_units": [{"amount": {"currency_code": "USD", "value": "19.99"}, "description": "Test"}],
 			"links": [{"href": "https://paypal.com/approve", "rel": "approve", "method": "GET"}],
 			"create_time": "2023-11-14T22:13:20Z"
-		}`))
+		}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	ctx := context.Background()
@@ -554,19 +585,24 @@ func TestCreatePaymentHTTP(t *testing.T) {
 
 func TestCreatePaymentManualCapture(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
 		if !strings.Contains(string(body), `"intent":"AUTHORIZE"`) {
 			t.Errorf("expected AUTHORIZE intent, got: %s", body)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		if _, err := w.Write([]byte(`{
 			"id": "ORDER-002",
 			"intent": "AUTHORIZE",
 			"status": "CREATED",
 			"purchase_units": [{"amount": {"currency_code": "USD", "value": "50.00"}}],
 			"create_time": "2023-11-14T22:13:20Z"
-		}`))
+		}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 
 	ctx := context.Background()
@@ -589,7 +625,7 @@ func TestGetPaymentHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": "ORDER-001",
 			"intent": "CAPTURE",
 			"status": "COMPLETED",
@@ -616,7 +652,7 @@ func TestGetPaymentHTTP(t *testing.T) {
 func TestGetPaymentNotFoundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte(`{"name":"RESOURCE_NOT_FOUND","message":"not found"}`))
+		_, _ = w.Write([]byte(`{"name":"RESOURCE_NOT_FOUND","message":"not found"}`))
 	})
 
 	_, err := p.GetPayment(context.Background(), "ORDER-INVALID")
@@ -632,7 +668,7 @@ func TestGetRefundHTTP(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": "REFUND-001",
 			"status": "COMPLETED",
 			"amount": {"currency_code": "USD", "value": "5.00"},
@@ -663,7 +699,7 @@ func TestRefundHTTP(t *testing.T) {
 
 		// First call: GetPayment (to find capture_id)
 		if r.Method == "GET" && r.URL.Path == "/v2/checkout/orders/ORDER-001" {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"id": "ORDER-001",
 				"intent": "CAPTURE",
 				"status": "COMPLETED",
@@ -680,7 +716,7 @@ func TestRefundHTTP(t *testing.T) {
 				t.Errorf("refund body missing amount: %s", body)
 			}
 
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"id": "REFUND-001",
 				"status": "COMPLETED",
 				"amount": {"currency_code": "USD", "value": "5.00"},
@@ -711,7 +747,7 @@ func TestRefundHTTP(t *testing.T) {
 func TestCreatePaymentServerError(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		w.Write([]byte(`{"name":"INTERNAL_SERVER_ERROR","message":"server error"}`))
+		_, _ = w.Write([]byte(`{"name":"INTERNAL_SERVER_ERROR","message":"server error"}`))
 	})
 
 	req := gopay.NewPaymentRequest(gopay.USD(1999))
@@ -735,7 +771,7 @@ func TestCancelPaymentHTTP(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		if r.Method == "GET" && r.URL.Path == "/v2/checkout/orders/ORDER-AUTH" {
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"id": "ORDER-AUTH",
 				"intent": "AUTHORIZE",
 				"status": "APPROVED",
