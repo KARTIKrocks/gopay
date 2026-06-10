@@ -53,7 +53,7 @@ jobs:
           tail -n +2 coverage-paypal.out >> coverage.out
           tail -n +2 coverage-razorpay.out >> coverage.out
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.out
           fail_ci_if_error: false
