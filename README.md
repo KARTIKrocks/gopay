@@ -172,8 +172,10 @@ amount directly:
 ```go
 switch event.Kind {
 case payment.WebhookPaymentSucceeded:
-    // event.PaymentID, event.OrderID, event.Amount are populated
-    markPaid(event.PaymentID, event.Amount)
+    // event.PaymentID and event.OrderID are populated; event.Amount may be nil.
+    if event.Amount != nil {
+        markPaid(event.PaymentID, event.Amount)
+    }
 case payment.WebhookPaymentFailed:
     markFailed(event.PaymentID)
 case payment.WebhookRefundSucceeded:

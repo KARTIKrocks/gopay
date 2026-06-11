@@ -1,6 +1,7 @@
 package gopay
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -53,28 +54,8 @@ func parseMajorUnitAmount(value, currency string) (*Amount, bool) {
 		return nil, false
 	}
 
-	s := strings.TrimSpace(value)
-	if s == "" {
-		return nil, false
-	}
-
-	neg := false
-	switch s[0] {
-	case '+':
-		s = s[1:]
-	case '-':
-		neg = true
-		s = s[1:]
-	}
-
-	intPart, fracPart, hasDot := strings.Cut(s, ".")
-	if hasDot && strings.IndexByte(fracPart, '.') >= 0 {
-		return nil, false // more than one decimal point
-	}
-	if intPart == "" {
-		intPart = "0" // allow leading-dot form like ".50"
-	}
-	if !isDigits(intPart) || (fracPart != "" && !isDigits(fracPart)) {
+	neg, intPart, fracPart, ok := splitDecimal(strings.TrimSpace(value))
+	if !ok {
 		return nil, false
 	}
 
@@ -92,12 +73,50 @@ func parseMajorUnitAmount(value, currency string) (*Amount, bool) {
 		return nil, false // overflow or invalid
 	}
 	if roundUp {
+		if minor == math.MaxInt64 {
+			return nil, false // rounding would overflow int64
+		}
 		minor++
 	}
 	if neg {
 		minor = -minor
 	}
 	return NewAmount(minor, cur), true
+}
+
+// splitDecimal validates a decimal amount string and splits it into its sign
+// and integer/fractional digit parts. It reports ok=false for empty, sign-only
+// ("+"/"-"), dot-only ("."), multi-dot, or non-numeric input. A leading-dot
+// form such as ".50" yields intPart "0".
+func splitDecimal(s string) (neg bool, intPart, fracPart string, ok bool) {
+	if s == "" {
+		return false, "", "", false
+	}
+	switch s[0] {
+	case '+':
+		s = s[1:]
+	case '-':
+		neg = true
+		s = s[1:]
+	}
+	if s == "" {
+		return false, "", "", false // sign with no digits
+	}
+
+	intPart, fracPart, hasDot := strings.Cut(s, ".")
+	switch {
+	case hasDot && strings.IndexByte(fracPart, '.') >= 0:
+		return false, "", "", false // more than one decimal point
+	case intPart == "" && fracPart == "":
+		return false, "", "", false // a lone "."
+	}
+	if intPart == "" {
+		intPart = "0" // leading-dot form like ".50"
+	}
+	if !isDigits(intPart) || (fracPart != "" && !isDigits(fracPart)) {
+		return false, "", "", false
+	}
+	return neg, intPart, fracPart, true
 }
 
 // isDigits reports whether s is non-empty and contains only ASCII digits.

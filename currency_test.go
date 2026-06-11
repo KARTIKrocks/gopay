@@ -71,6 +71,10 @@ func TestParseMajorUnitAmount(t *testing.T) {
 		{"non-numeric", "abc", "USD", 0, "", false},
 		{"two dots", "1.0.0", "USD", 0, "", false},
 		{"trailing junk", "1.0x", "USD", 0, "", false},
+		{"sign only plus", "+", "USD", 0, "", false},
+		{"sign only minus", "-", "USD", 0, "", false},
+		{"dot only", ".", "USD", 0, "", false},
+		{"rounding overflow", "92233720368547758.075", "USD", 0, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

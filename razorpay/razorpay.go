@@ -561,6 +561,7 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 			Entity struct {
 				ID        string `json:"id"`
 				PaymentID string `json:"payment_id"`
+				Status    string `json:"status"`
 				Amount    int64  `json:"amount"`
 				Currency  string `json:"currency"`
 			} `json:"entity"`
@@ -576,6 +577,14 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 		ev.PaymentID = pl.Refund.Entity.PaymentID
 		if pl.Refund.Entity.Currency != "" {
 			ev.Amount = gopay.NewAmount(pl.Refund.Entity.Amount, pl.Refund.Entity.Currency)
+		}
+		// refund.created can be pending; only a processed/failed entity status
+		// yields a normalized success/failure so callers don't act early.
+		switch pl.Refund.Entity.Status {
+		case "processed":
+			ev.Kind = gopay.WebhookRefundSucceeded
+		case "failed":
+			ev.Kind = gopay.WebhookRefundFailed
 		}
 	case pl.Payment.Entity.ID != "":
 		ev.PaymentID = pl.Payment.Entity.ID
@@ -601,10 +610,12 @@ func mapWebhookKind(event string) gopay.WebhookEventKind {
 		return gopay.WebhookPaymentSucceeded
 	case "payment.failed":
 		return gopay.WebhookPaymentFailed
-	case "refund.created", "refund.processed":
+	case "refund.processed":
 		return gopay.WebhookRefundSucceeded
 	case "refund.failed":
 		return gopay.WebhookRefundFailed
+	// refund.created is classified from the refund entity's status in
+	// ParseWebhook rather than assumed successful here.
 	default:
 		return gopay.WebhookUnknown
 	}

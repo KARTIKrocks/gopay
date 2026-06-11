@@ -419,6 +419,7 @@ func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
 	var obj struct {
 		Object         string `json:"object"`
 		ID             string `json:"id"`
+		Status         string `json:"status"`
 		Amount         int64  `json:"amount"`
 		AmountRefunded int64  `json:"amount_refunded"`
 		Currency       string `json:"currency"`
@@ -440,13 +441,28 @@ func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
 		if obj.Currency != "" {
 			ev.Amount = gopay.NewAmount(obj.Amount, obj.Currency)
 		}
+		// refund.created/refund.updated only become a normalized success or
+		// failure once the refund object reports a terminal status; until then
+		// the event stays WebhookUnknown so callers don't act on it prematurely.
+		switch obj.Status {
+		case "succeeded":
+			ev.Kind = gopay.WebhookRefundSucceeded
+		case "failed", "canceled":
+			ev.Kind = gopay.WebhookRefundFailed
+		}
 	case "charge":
 		ev.PaymentID = obj.PaymentIntent
 		if len(obj.Refunds.Data) > 0 {
 			ev.RefundID = obj.Refunds.Data[0].ID
 		}
+		// A charge.refunded event reports the refunded amount; other charge
+		// events report the charge amount.
+		amount := obj.Amount
+		if ev.Kind == gopay.WebhookRefundSucceeded || ev.Kind == gopay.WebhookRefundFailed {
+			amount = obj.AmountRefunded
+		}
 		if obj.Currency != "" {
-			ev.Amount = gopay.NewAmount(obj.AmountRefunded, obj.Currency)
+			ev.Amount = gopay.NewAmount(amount, obj.Currency)
 		}
 	default: // payment_intent and anything else with an id/amount
 		ev.PaymentID = obj.ID
@@ -468,10 +484,12 @@ func mapWebhookKind(eventType string) gopay.WebhookEventKind {
 		return gopay.WebhookPaymentFailed
 	case "payment_intent.canceled":
 		return gopay.WebhookPaymentCanceled
-	case "charge.refunded", "refund.created", "refund.updated":
+	case "charge.refunded":
 		return gopay.WebhookRefundSucceeded
 	case "refund.failed":
 		return gopay.WebhookRefundFailed
+	// refund.created / refund.updated are classified from the refund object's
+	// status in buildWebhookEvent rather than assumed successful here.
 	default:
 		return gopay.WebhookUnknown
 	}

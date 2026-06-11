@@ -59,6 +59,13 @@ func TestParseWebhookNormalized(t *testing.T) {
 			wantPaymentID: "SUB-1",
 			wantAmount:    nil,
 		},
+		{
+			name:          "malformed resource is best-effort",
+			payload:       `{"id":"WH-7","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":"not-an-object"}`,
+			wantKind:      gopay.WebhookPaymentSucceeded,
+			wantPaymentID: "",
+			wantAmount:    nil,
+		},
 	}
 
 	for _, tt := range tests {

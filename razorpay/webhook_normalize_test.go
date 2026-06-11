@@ -41,9 +41,31 @@ func TestParseWebhookNormalized(t *testing.T) {
 			wantAmount:    gopay.NewAmount(20000, "INR"),
 		},
 		{
+			name:          "refund created with processed status",
+			payload:       `{"event":"refund.created","account_id":"acc_5","payload":{"refund":{"entity":{"id":"rfnd_2","payment_id":"pay_5","status":"processed","amount":1000,"currency":"INR"}}}}`,
+			wantKind:      gopay.WebhookRefundSucceeded,
+			wantPaymentID: "pay_5",
+			wantRefundID:  "rfnd_2",
+			wantAmount:    gopay.NewAmount(1000, "INR"),
+		},
+		{
+			name:          "refund created still pending stays unknown",
+			payload:       `{"event":"refund.created","account_id":"acc_6","payload":{"refund":{"entity":{"id":"rfnd_3","payment_id":"pay_6","status":"pending","amount":1000,"currency":"INR"}}}}`,
+			wantKind:      gopay.WebhookUnknown,
+			wantPaymentID: "pay_6",
+			wantRefundID:  "rfnd_3",
+			wantAmount:    gopay.NewAmount(1000, "INR"),
+		},
+		{
 			name:       "unmapped event",
 			payload:    `{"event":"payment.dispute.created","account_id":"acc_4","payload":{}}`,
 			wantKind:   gopay.WebhookUnknown,
+			wantAmount: nil,
+		},
+		{
+			name:       "malformed payload is best-effort",
+			payload:    `{"event":"payment.captured","account_id":"acc_7","payload":"{invalid}"}`,
+			wantKind:   gopay.WebhookPaymentSucceeded,
 			wantAmount: nil,
 		},
 	}
