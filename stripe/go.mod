@@ -3,7 +3,7 @@ module github.com/KARTIKrocks/gopay/stripe
 go 1.24
 
 require (
-	github.com/KARTIKrocks/gopay v0.1.1
+	github.com/KARTIKrocks/gopay v0.2.0
 	github.com/stripe/stripe-go/v81 v81.4.0
 )
 
