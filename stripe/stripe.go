@@ -3,6 +3,7 @@ package stripe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -391,12 +392,7 @@ func (p *Provider) VerifyWebhook(_ context.Context, payload []byte, headers map[
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", gopay.ErrProviderError, err)
 	}
-	return &gopay.WebhookEvent{
-		ID:       event.ID,
-		Type:     string(event.Type),
-		Provider: "stripe",
-		Raw:      event.Data.Raw,
-	}, nil
+	return buildWebhookEvent(event), nil
 }
 
 // ParseWebhook parses a Stripe webhook event.
@@ -405,13 +401,98 @@ func ParseWebhook(payload []byte, signature, webhookSecret string) (*gopay.Webho
 	if err != nil {
 		return nil, fmt.Errorf("ParseWebhook: %w", err)
 	}
+	return buildWebhookEvent(event), nil
+}
 
-	return &gopay.WebhookEvent{
+// buildWebhookEvent maps a verified Stripe event into a normalized
+// gopay.WebhookEvent, extracting the payment/refund identifiers and amount from
+// the event's data object so callers don't have to parse Raw themselves.
+func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
+	ev := &gopay.WebhookEvent{
 		ID:       event.ID,
 		Type:     string(event.Type),
 		Provider: "stripe",
 		Raw:      event.Data.Raw,
-	}, nil
+		Kind:     mapWebhookKind(string(event.Type)),
+	}
+
+	var obj struct {
+		Object         string `json:"object"`
+		ID             string `json:"id"`
+		Status         string `json:"status"`
+		Amount         int64  `json:"amount"`
+		AmountRefunded int64  `json:"amount_refunded"`
+		Currency       string `json:"currency"`
+		PaymentIntent  string `json:"payment_intent"`
+		Refunds        struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		} `json:"refunds"`
+	}
+	if err := json.Unmarshal(event.Data.Raw, &obj); err != nil {
+		return ev
+	}
+
+	switch obj.Object {
+	case "refund":
+		ev.RefundID = obj.ID
+		ev.PaymentID = obj.PaymentIntent
+		if obj.Currency != "" {
+			ev.Amount = gopay.NewAmount(obj.Amount, obj.Currency)
+		}
+		// refund.created/refund.updated only become a normalized success or
+		// failure once the refund object reports a terminal status; until then
+		// the event stays WebhookUnknown so callers don't act on it prematurely.
+		switch obj.Status {
+		case "succeeded":
+			ev.Kind = gopay.WebhookRefundSucceeded
+		case "failed", "canceled":
+			ev.Kind = gopay.WebhookRefundFailed
+		}
+	case "charge":
+		ev.PaymentID = obj.PaymentIntent
+		if len(obj.Refunds.Data) > 0 {
+			ev.RefundID = obj.Refunds.Data[0].ID
+		}
+		// A charge.refunded event reports the refunded amount; other charge
+		// events report the charge amount.
+		amount := obj.Amount
+		if ev.Kind == gopay.WebhookRefundSucceeded || ev.Kind == gopay.WebhookRefundFailed {
+			amount = obj.AmountRefunded
+		}
+		if obj.Currency != "" {
+			ev.Amount = gopay.NewAmount(amount, obj.Currency)
+		}
+	default: // payment_intent and anything else with an id/amount
+		ev.PaymentID = obj.ID
+		if obj.Currency != "" {
+			ev.Amount = gopay.NewAmount(obj.Amount, obj.Currency)
+		}
+	}
+	return ev
+}
+
+// mapWebhookKind maps a Stripe event type to a normalized webhook event kind.
+func mapWebhookKind(eventType string) gopay.WebhookEventKind {
+	switch eventType {
+	case "payment_intent.created":
+		return gopay.WebhookPaymentCreated
+	case "payment_intent.succeeded":
+		return gopay.WebhookPaymentSucceeded
+	case "payment_intent.payment_failed":
+		return gopay.WebhookPaymentFailed
+	case "payment_intent.canceled":
+		return gopay.WebhookPaymentCanceled
+	case "charge.refunded":
+		return gopay.WebhookRefundSucceeded
+	case "refund.failed":
+		return gopay.WebhookRefundFailed
+	// refund.created / refund.updated are classified from the refund object's
+	// status in buildWebhookEvent rather than assumed successful here.
+	default:
+		return gopay.WebhookUnknown
+	}
 }
 
 func (p *Provider) mapPaymentIntent(pi *stripe.PaymentIntent) *gopay.Payment {

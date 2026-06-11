@@ -708,12 +708,64 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 		return nil, err
 	}
 
-	return &gopay.WebhookEvent{
+	ev := &gopay.WebhookEvent{
 		ID:       event.ID,
 		Type:     event.EventType,
 		Provider: "paypal",
 		Raw:      event.Resource,
-	}, nil
+		Kind:     mapWebhookKind(event.EventType),
+	}
+
+	// The resource carries the capture/refund id, the amount as a major-unit
+	// decimal string, and (for captures) the originating order id.
+	var res struct {
+		ID     string `json:"id"`
+		Amount struct {
+			Value        string `json:"value"`
+			CurrencyCode string `json:"currency_code"`
+		} `json:"amount"`
+		SupplementaryData struct {
+			RelatedIDs struct {
+				OrderID string `json:"order_id"`
+			} `json:"related_ids"`
+		} `json:"supplementary_data"`
+	}
+	if err := json.Unmarshal(event.Resource, &res); err != nil {
+		return ev, nil // best-effort: Raw is still available to the caller
+	}
+
+	switch ev.Kind {
+	case gopay.WebhookRefundSucceeded, gopay.WebhookRefundFailed:
+		ev.RefundID = res.ID
+	default:
+		ev.PaymentID = res.ID
+	}
+	ev.OrderID = res.SupplementaryData.RelatedIDs.OrderID
+	// PayPal sends amounts as major-unit decimal strings; normalize to minor
+	// units. Leaves Amount nil for unknown currencies or unparseable values.
+	if amount, ok := gopay.ParseMajorUnitAmount(res.Amount.Value, res.Amount.CurrencyCode); ok {
+		ev.Amount = amount
+	}
+
+	return ev, nil
+}
+
+// mapWebhookKind maps a PayPal event type to a normalized webhook event kind.
+func mapWebhookKind(eventType string) gopay.WebhookEventKind {
+	switch eventType {
+	case "CHECKOUT.ORDER.APPROVED", "PAYMENT.CAPTURE.PENDING":
+		return gopay.WebhookPaymentCreated
+	case "PAYMENT.CAPTURE.COMPLETED", "CHECKOUT.ORDER.COMPLETED":
+		return gopay.WebhookPaymentSucceeded
+	case "PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.DECLINED":
+		return gopay.WebhookPaymentFailed
+	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED":
+		return gopay.WebhookRefundSucceeded
+	case "PAYMENT.REFUND.FAILED":
+		return gopay.WebhookRefundFailed
+	default:
+		return gopay.WebhookUnknown
+	}
 }
 
 func (p *Provider) getAccessToken(ctx context.Context) (string, error) {

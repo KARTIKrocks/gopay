@@ -40,11 +40,11 @@ go get github.com/KARTIKrocks/gopay/razorpay
 
 ## Supported Providers
 
-| Provider  | Payments | Refunds | Customers | Payment Methods | Webhooks |
-|-----------|----------|---------|-----------|-----------------|----------|
-| Stripe    | Yes      | Yes     | Yes       | Yes             | Yes      |
-| PayPal    | Yes      | Yes     | No        | No              | Yes      |
-| Razorpay  | Yes      | Yes     | Yes       | No              | Yes      |
+| Provider | Payments | Refunds | Customers | Payment Methods | Webhooks |
+| -------- | -------- | ------- | --------- | --------------- | -------- |
+| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes      |
+| PayPal   | Yes      | Yes     | No        | No              | Yes      |
+| Razorpay | Yes      | Yes     | Yes       | No              | Yes      |
 
 ## Quick Start
 
@@ -164,6 +164,31 @@ if err != nil {
 fmt.Println(event.Type)     // e.g., "payment_intent.succeeded"
 fmt.Println(event.Provider) // e.g., "stripe"
 ```
+
+The event is also **provider-normalized**, so you can act on it without parsing the
+raw provider payload. Switch on `event.Kind` and read the normalized identifiers and
+amount directly:
+
+```go
+switch event.Kind {
+case payment.WebhookPaymentSucceeded:
+    // event.PaymentID and event.OrderID are populated; event.Amount may be nil.
+    if event.Amount != nil {
+        markPaid(event.PaymentID, event.Amount)
+    }
+case payment.WebhookPaymentFailed:
+    markFailed(event.PaymentID)
+case payment.WebhookRefundSucceeded:
+    recordRefund(event.RefundID, event.PaymentID, event.Amount)
+case payment.WebhookUnknown:
+    // not a normalized event; fall back to event.Type / event.Raw
+}
+```
+
+`event.Amount` is in integer minor units (like everywhere else in the library) and is
+`nil` when the event carries no amount. Amounts are normalized across providers — PayPal's
+major-unit decimal strings (e.g. `"10.00"`) are converted to minor units automatically.
+Unmapped events keep `Kind == WebhookUnknown` with `Type` and `Raw` intact.
 
 ## Error Handling
 

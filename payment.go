@@ -916,12 +916,37 @@ func (c *Client) ListPaymentMethods(ctx context.Context, customerID string) ([]*
 	return methods, nil
 }
 
+// WebhookEventKind is a provider-normalized webhook event category. It lets
+// callers switch on a unified set of event meanings regardless of provider,
+// instead of parsing each provider's raw event-type string.
+type WebhookEventKind string
+
+// Webhook event kinds. WebhookUnknown is used for events that don't map to a
+// normalized category; callers can still inspect WebhookEvent.Type and Raw.
+const (
+	WebhookUnknown          WebhookEventKind = ""                  // unmapped/unsupported event
+	WebhookPaymentCreated   WebhookEventKind = "payment.created"   // a payment was created/initiated
+	WebhookPaymentSucceeded WebhookEventKind = "payment.succeeded" // payment captured/paid/completed
+	WebhookPaymentFailed    WebhookEventKind = "payment.failed"    // payment attempt failed/denied
+	WebhookPaymentCanceled  WebhookEventKind = "payment.canceled"  // payment canceled/voided
+	WebhookRefundSucceeded  WebhookEventKind = "refund.succeeded"  // refund completed
+	WebhookRefundFailed     WebhookEventKind = "refund.failed"     // refund failed
+)
+
+// String returns the string representation.
+func (k WebhookEventKind) String() string { return string(k) }
+
 // WebhookEvent represents a parsed webhook event.
+//
+// In addition to the raw fields (Type, Raw), it carries provider-normalized
+// fields (Kind, PaymentID, OrderID, RefundID, Amount) so callers can act on an
+// event without hand-parsing the provider-specific Raw payload. Normalized
+// fields are zero-valued ("" or nil) when they don't apply to the event.
 type WebhookEvent struct {
 	// ID is the event ID.
 	ID string
 
-	// Type is the event type.
+	// Type is the raw provider event type, e.g. "payment_intent.succeeded".
 	Type string
 
 	// Provider is the provider name.
@@ -929,4 +954,23 @@ type WebhookEvent struct {
 
 	// Raw contains the raw event payload.
 	Raw []byte
+
+	// Kind is the provider-normalized event category; WebhookUnknown for
+	// events that don't map to a normalized category.
+	Kind WebhookEventKind
+
+	// PaymentID is the provider payment identifier, when the event concerns a
+	// payment; empty otherwise.
+	PaymentID string
+
+	// OrderID is the provider order identifier, when present; empty otherwise.
+	OrderID string
+
+	// RefundID is the provider refund identifier, when the event concerns a
+	// refund; empty otherwise.
+	RefundID string
+
+	// Amount is the normalized amount in minor units; nil when the event
+	// carries no amount or the amount could not be parsed.
+	Amount *Amount
 }

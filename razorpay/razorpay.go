@@ -522,9 +522,6 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 		AccountID string          `json:"account_id"`
 		Event     string          `json:"event"`
 		Payload   json.RawMessage `json:"payload"`
-		Contains  []struct {
-			// Razorpay webhooks nest entity IDs inside "contains".
-		} `json:"-"`
 	}
 
 	if err := json.Unmarshal(payload, &event); err != nil {
@@ -535,12 +532,93 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 	// Use account_id + event as a composite identifier.
 	eventID := event.AccountID + ":" + event.Event
 
-	return &gopay.WebhookEvent{
+	ev := &gopay.WebhookEvent{
 		ID:       eventID,
 		Type:     event.Event,
 		Provider: "razorpay",
 		Raw:      event.Payload,
-	}, nil
+		Kind:     mapWebhookKind(event.Event),
+	}
+
+	// Razorpay nests the relevant entities under payload.{payment,order,refund}.entity.
+	var pl struct {
+		Payment struct {
+			Entity struct {
+				ID       string `json:"id"`
+				OrderID  string `json:"order_id"`
+				Amount   int64  `json:"amount"`
+				Currency string `json:"currency"`
+			} `json:"entity"`
+		} `json:"payment"`
+		Order struct {
+			Entity struct {
+				ID       string `json:"id"`
+				Amount   int64  `json:"amount"`
+				Currency string `json:"currency"`
+			} `json:"entity"`
+		} `json:"order"`
+		Refund struct {
+			Entity struct {
+				ID        string `json:"id"`
+				PaymentID string `json:"payment_id"`
+				Status    string `json:"status"`
+				Amount    int64  `json:"amount"`
+				Currency  string `json:"currency"`
+			} `json:"entity"`
+		} `json:"refund"`
+	}
+	if err := json.Unmarshal(event.Payload, &pl); err != nil {
+		return ev, nil // best-effort: Raw is still available to the caller
+	}
+
+	switch {
+	case pl.Refund.Entity.ID != "":
+		ev.RefundID = pl.Refund.Entity.ID
+		ev.PaymentID = pl.Refund.Entity.PaymentID
+		if pl.Refund.Entity.Currency != "" {
+			ev.Amount = gopay.NewAmount(pl.Refund.Entity.Amount, pl.Refund.Entity.Currency)
+		}
+		// refund.created can be pending; only a processed/failed entity status
+		// yields a normalized success/failure so callers don't act early.
+		switch pl.Refund.Entity.Status {
+		case "processed":
+			ev.Kind = gopay.WebhookRefundSucceeded
+		case "failed":
+			ev.Kind = gopay.WebhookRefundFailed
+		}
+	case pl.Payment.Entity.ID != "":
+		ev.PaymentID = pl.Payment.Entity.ID
+		ev.OrderID = pl.Payment.Entity.OrderID
+		if pl.Payment.Entity.Currency != "" {
+			ev.Amount = gopay.NewAmount(pl.Payment.Entity.Amount, pl.Payment.Entity.Currency)
+		}
+	case pl.Order.Entity.ID != "":
+		ev.OrderID = pl.Order.Entity.ID
+		if pl.Order.Entity.Currency != "" {
+			ev.Amount = gopay.NewAmount(pl.Order.Entity.Amount, pl.Order.Entity.Currency)
+		}
+	}
+	return ev, nil
+}
+
+// mapWebhookKind maps a Razorpay event name to a normalized webhook event kind.
+func mapWebhookKind(event string) gopay.WebhookEventKind {
+	switch event {
+	case "payment.authorized":
+		return gopay.WebhookPaymentCreated
+	case "payment.captured", "order.paid":
+		return gopay.WebhookPaymentSucceeded
+	case "payment.failed":
+		return gopay.WebhookPaymentFailed
+	case "refund.processed":
+		return gopay.WebhookRefundSucceeded
+	case "refund.failed":
+		return gopay.WebhookRefundFailed
+	// refund.created is classified from the refund entity's status in
+	// ParseWebhook rather than assumed successful here.
+	default:
+		return gopay.WebhookUnknown
+	}
 }
 
 func (p *Provider) mapOrder(o *order) *gopay.Payment {

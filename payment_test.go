@@ -7,6 +7,7 @@ import (
 )
 
 func TestAmountValidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		amount  *Amount
@@ -24,6 +25,7 @@ func TestAmountValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.amount.Validate()
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Validate() = %v, want %v", err, tt.wantErr)
@@ -33,6 +35,7 @@ func TestAmountValidate(t *testing.T) {
 }
 
 func TestAmountValidateNil(t *testing.T) {
+	t.Parallel()
 	var a *Amount
 	if err := a.Validate(); !errors.Is(err, ErrInvalidAmount) {
 		t.Errorf("nil Amount.Validate() = %v, want ErrInvalidAmount", err)
@@ -40,6 +43,7 @@ func TestAmountValidateNil(t *testing.T) {
 }
 
 func TestCurrencyHelpers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		amount   *Amount
@@ -54,6 +58,7 @@ func TestCurrencyHelpers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if tt.amount.Value != tt.wantVal {
 				t.Errorf("Value = %d, want %d", tt.amount.Value, tt.wantVal)
 			}
@@ -65,6 +70,7 @@ func TestCurrencyHelpers(t *testing.T) {
 }
 
 func TestPaymentRequestValidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		req     *PaymentRequest
@@ -78,6 +84,7 @@ func TestPaymentRequestValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.req.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -87,6 +94,7 @@ func TestPaymentRequestValidate(t *testing.T) {
 }
 
 func TestRefundRequestValidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		req     *RefundRequest
@@ -101,6 +109,7 @@ func TestRefundRequestValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.req.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -110,6 +119,7 @@ func TestRefundRequestValidate(t *testing.T) {
 }
 
 func TestPaymentRequestBuilder(t *testing.T) {
+	t.Parallel()
 	req := NewPaymentRequest(USD(1000)).
 		WithDescription("test").
 		WithCustomer("cus_123").
@@ -146,6 +156,7 @@ func TestPaymentRequestBuilder(t *testing.T) {
 }
 
 func TestRefundRequestBuilder(t *testing.T) {
+	t.Parallel()
 	req := NewRefundRequest("pi_123").
 		WithAmount(USD(500)).
 		WithReason(RefundReasonDuplicate).
@@ -170,6 +181,7 @@ func TestRefundRequestBuilder(t *testing.T) {
 }
 
 func TestCustomerRequestBuilder(t *testing.T) {
+	t.Parallel()
 	req := NewCustomerRequest("test@example.com").
 		WithName("John").
 		WithPhone("+1234567890").
@@ -194,6 +206,7 @@ func TestCustomerRequestBuilder(t *testing.T) {
 }
 
 func TestStringMethods(t *testing.T) {
+	t.Parallel()
 	if PaymentStatusSucceeded.String() != "succeeded" {
 		t.Error("PaymentStatus.String() failed")
 	}
@@ -212,6 +225,7 @@ func TestStringMethods(t *testing.T) {
 }
 
 func TestPaymentHelpers(t *testing.T) {
+	t.Parallel()
 	p := &Payment{Status: PaymentStatusSucceeded, AmountCaptured: 100}
 	if !p.IsSuccessful() {
 		t.Error("IsSuccessful should be true")
@@ -233,6 +247,7 @@ func TestPaymentHelpers(t *testing.T) {
 }
 
 func TestRefundHelpers(t *testing.T) {
+	t.Parallel()
 	r := &Refund{Status: RefundStatusSucceeded}
 	if !r.IsSuccessful() {
 		t.Error("IsSuccessful should be true")
