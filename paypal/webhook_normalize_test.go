@@ -46,6 +46,13 @@ func TestParseWebhookNormalized(t *testing.T) {
 			wantAmount:   gopay.NewAmount(350, "USD"),
 		},
 		{
+			name:         "refund failed",
+			payload:      `{"id":"WH-4b","event_type":"PAYMENT.REFUND.FAILED","resource":{"id":"REF-2","amount":{"value":"3.50","currency_code":"USD"}}}`,
+			wantKind:     gopay.WebhookRefundFailed,
+			wantRefundID: "REF-2",
+			wantAmount:   gopay.NewAmount(350, "USD"),
+		},
+		{
 			name:          "unknown currency leaves amount nil",
 			payload:       `{"id":"WH-5","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"id":"CAP-5","amount":{"value":"5.00","currency_code":"XYZ"}}}`,
 			wantKind:      gopay.WebhookPaymentSucceeded,

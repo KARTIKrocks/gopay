@@ -757,10 +757,12 @@ func mapWebhookKind(eventType string) gopay.WebhookEventKind {
 		return gopay.WebhookPaymentCreated
 	case "PAYMENT.CAPTURE.COMPLETED", "CHECKOUT.ORDER.COMPLETED":
 		return gopay.WebhookPaymentSucceeded
-	case "PAYMENT.CAPTURE.DENIED":
+	case "PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.DECLINED":
 		return gopay.WebhookPaymentFailed
 	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED":
 		return gopay.WebhookRefundSucceeded
+	case "PAYMENT.REFUND.FAILED":
+		return gopay.WebhookRefundFailed
 	default:
 		return gopay.WebhookUnknown
 	}

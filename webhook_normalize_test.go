@@ -2,6 +2,7 @@ package gopay
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -24,6 +25,19 @@ func TestMockVerifyWebhookNormalized(t *testing.T) {
 	}
 	if ev.Amount == nil || ev.Amount.Value != 2500 || ev.Amount.Currency != "USD" {
 		t.Errorf("Amount = %+v, want {2500 USD}", ev.Amount)
+	}
+}
+
+func TestMockVerifyWebhookError(t *testing.T) {
+	sentinel := errors.New("boom")
+	mock := NewMockProvider().WithWebhookError(sentinel)
+
+	ev, err := mock.VerifyWebhook(context.Background(), []byte(`{"id":"evt_1","type":"payment.captured"}`), nil)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want %v", err, sentinel)
+	}
+	if ev != nil {
+		t.Errorf("event = %+v, want nil on error", ev)
 	}
 }
 
