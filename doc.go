@@ -43,6 +43,13 @@
 // debugging or when verification is handled elsewhere (e.g. by a gateway),
 // but should not be used in production without separate verification.
 //
+// The returned [WebhookEvent] is provider-normalized: switch on its Kind (a
+// [WebhookEventKind] such as [WebhookPaymentSucceeded] or [WebhookRefundSucceeded])
+// and read the normalized PaymentID, OrderID, RefundID, and Amount fields
+// instead of parsing the provider-specific Raw payload. Amount is in integer
+// minor units across all providers (nil when absent); unmapped events have
+// Kind [WebhookUnknown] with Type and Raw preserved.
+//
 // # Error Handling
 //
 // All provider-specific errors are mapped to sentinel errors defined in this

@@ -377,19 +377,34 @@ func (p *MockProvider) VerifyWebhook(_ context.Context, payload []byte, _ map[st
 	}
 
 	var event struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
+		ID        string           `json:"id"`
+		Type      string           `json:"type"`
+		Kind      WebhookEventKind `json:"kind"`
+		PaymentID string           `json:"payment_id"`
+		OrderID   string           `json:"order_id"`
+		RefundID  string           `json:"refund_id"`
+		Amount    int64            `json:"amount"`
+		Currency  string           `json:"currency"`
 	}
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrProviderError, err)
 	}
 
-	return &WebhookEvent{
-		ID:       event.ID,
-		Type:     event.Type,
-		Provider: "mock",
-		Raw:      payload,
-	}, nil
+	ev := &WebhookEvent{
+		ID:        event.ID,
+		Type:      event.Type,
+		Provider:  "mock",
+		Raw:       payload,
+		Kind:      event.Kind,
+		PaymentID: event.PaymentID,
+		OrderID:   event.OrderID,
+		RefundID:  event.RefundID,
+	}
+	// The mock emits already-normalized minor-unit amounts directly.
+	if event.Currency != "" {
+		ev.Amount = NewAmount(event.Amount, event.Currency)
+	}
+	return ev, nil
 }
 
 // WithWebhookError sets the error to return on VerifyWebhook.

@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-11
+
+Provider-normalized webhook events. `WebhookEvent` now carries typed, unified
+fields so consumers can act on an event without hand-parsing each provider's raw
+JSON. All changes are backward compatible — only additive fields and new
+exported symbols; existing `Raw`-based code keeps working.
+
+### Added
+
+- **Core**: `WebhookEvent` gains normalized fields — `Kind` (a new
+  `WebhookEventKind`), `PaymentID`, `OrderID`, `RefundID`, and `Amount`
+  (`*Amount`, in minor units). Fields are zero-valued when not applicable to the
+  event; unmapped events use `Kind == WebhookUnknown` with `Type`/`Raw` preserved.
+- **Core**: `WebhookEventKind` enum — `WebhookPaymentCreated`,
+  `WebhookPaymentSucceeded`, `WebhookPaymentFailed`, `WebhookPaymentCanceled`,
+  `WebhookRefundSucceeded`, `WebhookRefundFailed`, and `WebhookUnknown`.
+- **Core**: `ParseMajorUnitAmount` converts a major-unit decimal string (e.g.
+  PayPal's `"10.00"`) to a minor-unit `Amount`, backed by an ISO 4217
+  minor-unit exponent table kept in sync with the accepted-currency allowlist.
+  Rounds half-up; returns `(nil, false)` for unknown currencies or malformed input.
+
+### Changed
+
+- **Stripe / PayPal / Razorpay**: `VerifyWebhook` and `ParseWebhook` now populate
+  the normalized fields. Provider event types are mapped to `WebhookEventKind`,
+  and identifiers/amounts are extracted from the verified payload (PayPal's
+  major-unit amounts are converted to minor units; `Amount` is left nil for
+  currencies outside the accepted set).
+- **MockProvider**: `VerifyWebhook` reads optional `kind`, `payment_id`,
+  `order_id`, `refund_id`, `amount`, and `currency` fields so the test harness can
+  emit fully-normalized events.
+
+### Tooling & Tests
+
+- Currency-coverage guard test ensures every accepted currency has an explicit
+  minor-unit exponent.
+- Added per-provider webhook normalization tests and `ParseMajorUnitAmount`
+  rounding/edge-case coverage.
+
 ## [0.1.1] - 2026-06-07
 
 Curated quality and correctness pass (informed by an automated full-codebase
@@ -83,4 +122,6 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.2.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.2.0
+[0.1.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.1.1
 [0.1.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.1.0
