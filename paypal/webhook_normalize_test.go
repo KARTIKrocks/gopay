@@ -7,6 +7,7 @@ import (
 )
 
 func TestParseWebhookNormalized(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		payload       string
@@ -77,6 +78,7 @@ func TestParseWebhookNormalized(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ev, err := ParseWebhook([]byte(tt.payload))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)

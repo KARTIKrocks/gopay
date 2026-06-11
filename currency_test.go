@@ -8,6 +8,7 @@ import "testing"
 // wrong default), and the table must not carry exponents for currencies the
 // library doesn't accept.
 func TestCurrencyExponentCoverage(t *testing.T) {
+	t.Parallel()
 	for cur := range validCurrencies {
 		if _, ok := currencyMinorUnits[cur]; !ok {
 			t.Errorf("currency %q is in validCurrencies but missing from currencyMinorUnits", cur)
@@ -21,6 +22,7 @@ func TestCurrencyExponentCoverage(t *testing.T) {
 }
 
 func TestMinorUnitExponent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		currency string
 		wantExp  int
@@ -45,6 +47,7 @@ func TestMinorUnitExponent(t *testing.T) {
 }
 
 func TestParseMajorUnitAmount(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		value     string
@@ -78,6 +81,7 @@ func TestParseMajorUnitAmount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			amount, ok := parseMajorUnitAmount(tt.value, tt.currency)
 			if ok != tt.wantOK {
 				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)

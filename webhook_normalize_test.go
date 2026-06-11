@@ -7,6 +7,7 @@ import (
 )
 
 func TestMockVerifyWebhookNormalized(t *testing.T) {
+	t.Parallel()
 	mock := NewMockProvider()
 	payload := []byte(`{"id":"evt_1","type":"payment.captured","kind":"payment.succeeded","payment_id":"pay_1","order_id":"order_1","amount":2500,"currency":"USD"}`)
 
@@ -29,6 +30,7 @@ func TestMockVerifyWebhookNormalized(t *testing.T) {
 }
 
 func TestMockVerifyWebhookError(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("boom")
 	mock := NewMockProvider().WithWebhookError(sentinel)
 
@@ -42,6 +44,7 @@ func TestMockVerifyWebhookError(t *testing.T) {
 }
 
 func TestMockVerifyWebhookNoAmount(t *testing.T) {
+	t.Parallel()
 	mock := NewMockProvider()
 	// Minimal payload without normalized fields stays backward-compatible.
 	payload := []byte(`{"id":"evt_2","type":"payment.completed"}`)
