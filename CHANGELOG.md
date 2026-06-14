@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-14
+
+Listing and pagination. Providers that support it can now list payments, refunds,
+and customers with cursor-based pagination through a unified `Client` API. All
+changes are backward compatible — only additive symbols and a new optional
+interface; existing code is unaffected.
+
+### Added
+
+- **Core**: `ListProvider` — a new optional provider interface
+  (`ListPayments`, `ListRefunds`, `ListCustomers`) gated by the `Client` with a
+  runtime type assertion, returning `ErrUnsupported` for providers that don't
+  implement it.
+- **Core**: `Client.ListPayments`, `Client.ListRefunds`, and
+  `Client.ListCustomers`, following the existing validate → type-assert →
+  `ErrUnsupported` → call → wrap-error pattern.
+- **Core**: `ListParams` (builder with `WithLimit`/`WithCursor`, plus `Validate`
+  and `EffectiveLimit`) and a generic `List[T]` page type (`Items`, `HasMore`,
+  `NextCursor`). Pagination is cursor-based with an opaque, provider-specific
+  cursor. `DefaultListLimit` (20) and `MaxListLimit` (100) bound the page size.
+- **Stripe**: implements `ListProvider` using cursor pagination
+  (`starting_after`), one page per call, with `has_more` taken from the list
+  metadata.
+- **Razorpay**: implements `ListProvider` using `skip`/`count` offsets, encoded
+  into the opaque cursor.
+- **MockProvider**: implements `ListProvider` with deterministic newest-first
+  ordering for tests.
+
+### Notes
+
+- **PayPal**: does not implement `ListProvider` (its Orders API has no list
+  endpoint), so listing calls return `ErrUnsupported`.
+
+### Tooling & Tests
+
+- Core, Stripe, and Razorpay listing tests covering pagination walks, cursor
+  encoding, `HasMore`/empty/last-page edges, and the `ErrUnsupported` path.
+
 ## [0.2.0] - 2026-06-11
 
 Provider-normalized webhook events. `WebhookEvent` now carries typed, unified
@@ -122,6 +160,7 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.3.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.2.0
 [0.1.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.1.1
 [0.1.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.1.0

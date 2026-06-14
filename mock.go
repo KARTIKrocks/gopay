@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -362,6 +363,92 @@ func (p *MockProvider) ListPaymentMethods(ctx context.Context, customerID string
 	}
 
 	return methods, nil
+}
+
+// ListPayments lists mock payments with cursor-based pagination. Results are
+// ordered newest-first (by CreatedAt, then ID for determinism); the opaque
+// cursor is the ID of the last item on the previous page.
+func (p *MockProvider) ListPayments(_ context.Context, params *ListParams) (*List[*Payment], error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	all := make([]*Payment, 0, len(p.payments))
+	for _, pay := range p.payments {
+		all = append(all, pay)
+	}
+	sortByCreatedDesc(all, func(x *Payment) (time.Time, string) { return x.CreatedAt, x.ID })
+
+	items, hasMore, next := paginate(all, params, func(x *Payment) string { return x.ID })
+	return &List[*Payment]{Items: items, HasMore: hasMore, NextCursor: next}, nil
+}
+
+// ListRefunds lists mock refunds with cursor-based pagination.
+func (p *MockProvider) ListRefunds(_ context.Context, params *ListParams) (*List[*Refund], error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	all := make([]*Refund, 0, len(p.refunds))
+	for _, r := range p.refunds {
+		all = append(all, r)
+	}
+	sortByCreatedDesc(all, func(x *Refund) (time.Time, string) { return x.CreatedAt, x.ID })
+
+	items, hasMore, next := paginate(all, params, func(x *Refund) string { return x.ID })
+	return &List[*Refund]{Items: items, HasMore: hasMore, NextCursor: next}, nil
+}
+
+// ListCustomers lists mock customers with cursor-based pagination.
+func (p *MockProvider) ListCustomers(_ context.Context, params *ListParams) (*List[*Customer], error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	all := make([]*Customer, 0, len(p.customers))
+	for _, c := range p.customers {
+		all = append(all, c)
+	}
+	sortByCreatedDesc(all, func(x *Customer) (time.Time, string) { return x.CreatedAt, x.ID })
+
+	items, hasMore, next := paginate(all, params, func(x *Customer) string { return x.ID })
+	return &List[*Customer]{Items: items, HasMore: hasMore, NextCursor: next}, nil
+}
+
+// sortByCreatedDesc sorts items newest-first by their (CreatedAt, ID) key, using
+// ID as a stable tiebreak so pagination is deterministic even when timestamps
+// collide.
+func sortByCreatedDesc[T any](items []T, key func(T) (time.Time, string)) {
+	sort.Slice(items, func(i, j int) bool {
+		ti, idi := key(items[i])
+		tj, idj := key(items[j])
+		if ti.Equal(tj) {
+			return idi > idj
+		}
+		return ti.After(tj)
+	})
+}
+
+// paginate returns the page of items following the cursor in params, along with
+// whether more remain and the cursor for the next page. The cursor is the id of
+// the last item on the previous page; items must be pre-sorted.
+func paginate[T any](items []T, params *ListParams, id func(T) string) ([]T, bool, string) {
+	start := 0
+	if params != nil && params.Cursor != "" {
+		for i, it := range items {
+			if id(it) == params.Cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+
+	end := min(start+params.EffectiveLimit(), len(items))
+
+	page := items[start:end]
+	hasMore := end < len(items)
+	next := ""
+	if hasMore && len(page) > 0 {
+		next = id(page[len(page)-1])
+	}
+	return page, hasMore, next
 }
 
 // VerifyWebhook verifies and parses a mock webhook event.

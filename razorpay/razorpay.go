@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/KARTIKrocks/gopay"
@@ -491,6 +492,134 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 // DeleteCustomer is not supported by Razorpay.
 func (p *Provider) DeleteCustomer(ctx context.Context, customerID string) error {
 	return gopay.ErrUnsupported
+}
+
+// ListPayments lists payments with pagination. Razorpay uses skip/count
+// offsets; the opaque cursor encodes the next skip offset.
+func (p *Provider) ListPayments(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Payment], error) {
+	skip := cursorToSkip(params)
+	count := params.EffectiveLimit()
+
+	body, err := p.doListRequest(ctx, "/payments", skip, count)
+	if err != nil {
+		return nil, err
+	}
+
+	var coll struct {
+		Items []razorpayPayment `json:"items"`
+	}
+	if err := json.Unmarshal(body, &coll); err != nil {
+		return nil, err
+	}
+
+	items := make([]*gopay.Payment, 0, len(coll.Items))
+	for i := range coll.Items {
+		items = append(items, p.mapPayment(&coll.Items[i]))
+	}
+	return buildRazorpayList(items, skip, count), nil
+}
+
+// ListRefunds lists refunds with pagination. The opaque cursor encodes the next
+// skip offset.
+func (p *Provider) ListRefunds(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Refund], error) {
+	skip := cursorToSkip(params)
+	count := params.EffectiveLimit()
+
+	body, err := p.doListRequest(ctx, "/refunds", skip, count)
+	if err != nil {
+		return nil, err
+	}
+
+	var coll struct {
+		Items []razorpayRefund `json:"items"`
+	}
+	if err := json.Unmarshal(body, &coll); err != nil {
+		return nil, err
+	}
+
+	items := make([]*gopay.Refund, 0, len(coll.Items))
+	for i := range coll.Items {
+		items = append(items, p.mapRefund(&coll.Items[i]))
+	}
+	return buildRazorpayList(items, skip, count), nil
+}
+
+// ListCustomers lists customers with pagination. The opaque cursor encodes the
+// next skip offset.
+func (p *Provider) ListCustomers(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Customer], error) {
+	skip := cursorToSkip(params)
+	count := params.EffectiveLimit()
+
+	body, err := p.doListRequest(ctx, "/customers", skip, count)
+	if err != nil {
+		return nil, err
+	}
+
+	var coll struct {
+		Items []customer `json:"items"`
+	}
+	if err := json.Unmarshal(body, &coll); err != nil {
+		return nil, err
+	}
+
+	items := make([]*gopay.Customer, 0, len(coll.Items))
+	for i := range coll.Items {
+		items = append(items, p.mapCustomer(&coll.Items[i]))
+	}
+	return buildRazorpayList(items, skip, count), nil
+}
+
+// doListRequest performs a paginated GET against a Razorpay collection endpoint
+// and returns the raw response body.
+func (p *Provider) doListRequest(ctx context.Context, path string, skip, count int) ([]byte, error) {
+	url := fmt.Sprintf("%s%s?count=%d&skip=%d", p.config.BaseURL, path, count, skip)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.SetBasicAuth(p.config.KeyID, p.config.KeySecret)
+
+	resp, err := p.config.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, p.parseError(respBody)
+	}
+	return respBody, nil
+}
+
+// cursorToSkip decodes the opaque pagination cursor into a Razorpay skip offset.
+// An empty or malformed cursor starts from the beginning.
+func cursorToSkip(params *gopay.ListParams) int {
+	if params == nil || params.Cursor == "" {
+		return 0
+	}
+	skip, err := strconv.Atoi(params.Cursor)
+	if err != nil || skip < 0 {
+		return 0
+	}
+	return skip
+}
+
+// buildRazorpayList assembles a gopay.List from a page of items. Razorpay does
+// not return a has_more flag, so a full page (len == count) is treated as
+// "there may be more", and the next cursor is the advanced skip offset.
+func buildRazorpayList[T any](items []T, skip, count int) *gopay.List[T] {
+	list := &gopay.List[T]{Items: items}
+	if len(items) == count {
+		list.HasMore = true
+		list.NextCursor = strconv.Itoa(skip + len(items))
+	}
+	return list
 }
 
 // VerifyWebhook verifies and parses a Razorpay webhook event using HMAC-SHA256.

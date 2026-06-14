@@ -40,11 +40,14 @@ go get github.com/KARTIKrocks/gopay/razorpay
 
 ## Supported Providers
 
-| Provider | Payments | Refunds | Customers | Payment Methods | Webhooks |
-| -------- | -------- | ------- | --------- | --------------- | -------- |
-| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes      |
-| PayPal   | Yes      | Yes     | No        | No              | Yes      |
-| Razorpay | Yes      | Yes     | Yes       | No              | Yes      |
+| Provider | Payments | Refunds | Customers | Payment Methods | Webhooks | Listing |
+| -------- | -------- | ------- | --------- | --------------- | -------- | ------- |
+| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes      | Yes     |
+| PayPal   | Yes      | Yes     | No        | No              | Yes      | No      |
+| Razorpay | Yes      | Yes     | Yes       | No              | Yes      | Yes     |
+
+PayPal's Orders API has no list endpoint, so listing calls return `ErrUnsupported`
+for the PayPal provider.
 
 ## Quick Start
 
@@ -189,6 +192,35 @@ case payment.WebhookUnknown:
 `nil` when the event carries no amount. Amounts are normalized across providers — PayPal's
 major-unit decimal strings (e.g. `"10.00"`) are converted to minor units automatically.
 Unmapped events keep `Kind == WebhookUnknown` with `Type` and `Raw` intact.
+
+## Listing & Pagination
+
+Providers that support it (Stripe, Razorpay) can list payments, refunds, and
+customers with cursor-based pagination. Pass an opaque `NextCursor` from one page
+back via `WithCursor` to fetch the next:
+
+```go
+params := payment.NewListParams().WithLimit(50)
+for {
+    page, err := client.ListPayments(ctx, params)
+    if err != nil {
+        // errors.Is(err, payment.ErrUnsupported) if the provider can't list
+        break
+    }
+    for _, p := range page.Items {
+        process(p)
+    }
+    if !page.HasMore {
+        break
+    }
+    params = params.WithCursor(page.NextCursor)
+}
+```
+
+`ListRefunds` and `ListCustomers` follow the same shape. `Limit` defaults to
+`DefaultListLimit` (20) and may not exceed `MaxListLimit` (100). The cursor is
+provider-specific and must be treated as opaque (Stripe uses an object ID;
+Razorpay uses a skip offset) — always pass back the `NextCursor` you received.
 
 ## Error Handling
 
