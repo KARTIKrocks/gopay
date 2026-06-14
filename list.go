@@ -85,6 +85,9 @@ type List[T any] struct {
 // It is an optional interface: providers implement it only when their API
 // supports listing. The Client gates each method with a runtime type assertion
 // and returns ErrUnsupported for providers that don't implement it.
+//
+// All methods must handle a nil params: use ListParams.EffectiveLimit to derive
+// a safe page size and treat an empty cursor as "start from the first page".
 type ListProvider interface {
 	Provider
 

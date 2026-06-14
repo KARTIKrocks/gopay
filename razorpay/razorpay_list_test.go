@@ -2,6 +2,7 @@ package razorpay
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -140,5 +141,8 @@ func TestListPaymentsErrorHTTP(t *testing.T) {
 	_, err := p.ListPayments(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error from server failure")
+	}
+	if !errors.Is(err, gopay.ErrProviderError) {
+		t.Fatalf("error = %v, want gopay.ErrProviderError", err)
 	}
 }
