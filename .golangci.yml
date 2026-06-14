@@ -18,7 +18,6 @@ linters:
     revive:
       rules:
         - name: exported
-          disabled: false
   exclusions:
     rules:
       - linters:

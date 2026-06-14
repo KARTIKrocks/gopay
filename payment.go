@@ -916,6 +916,54 @@ func (c *Client) ListPaymentMethods(ctx context.Context, customerID string) ([]*
 	return methods, nil
 }
 
+// ListPayments lists payments with cursor-based pagination (if supported).
+func (c *Client) ListPayments(ctx context.Context, params *ListParams) (*List[*Payment], error) {
+	if err := params.Validate(); err != nil {
+		return nil, err
+	}
+	lp, ok := c.provider.(ListProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	list, err := lp.ListPayments(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list payments: %w", err)
+	}
+	return list, nil
+}
+
+// ListRefunds lists refunds with cursor-based pagination (if supported).
+func (c *Client) ListRefunds(ctx context.Context, params *ListParams) (*List[*Refund], error) {
+	if err := params.Validate(); err != nil {
+		return nil, err
+	}
+	lp, ok := c.provider.(ListProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	list, err := lp.ListRefunds(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list refunds: %w", err)
+	}
+	return list, nil
+}
+
+// ListCustomers lists customers with cursor-based pagination (if supported).
+func (c *Client) ListCustomers(ctx context.Context, params *ListParams) (*List[*Customer], error) {
+	if err := params.Validate(); err != nil {
+		return nil, err
+	}
+	lp, ok := c.provider.(ListProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	list, err := lp.ListCustomers(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("list customers: %w", err)
+	}
+	return list, nil
+}
+
 // WebhookEventKind is a provider-normalized webhook event category. It lets
 // callers switch on a unified set of event meanings regardless of provider,
 // instead of parsing each provider's raw event-type string.

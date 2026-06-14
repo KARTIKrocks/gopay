@@ -372,6 +372,82 @@ func (p *Provider) ListPaymentMethods(ctx context.Context, customerID string) ([
 	return methods, nil
 }
 
+// ListPayments lists payment intents with cursor-based pagination.
+// The cursor is a Stripe object ID used as starting_after.
+func (p *Provider) ListPayments(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Payment], error) {
+	listParams := &stripe.PaymentIntentListParams{}
+	applyStripeListParams(&listParams.ListParams, ctx, params)
+
+	iter := p.api.PaymentIntents.List(listParams)
+	var items []*gopay.Payment
+	for iter.Next() {
+		items = append(items, p.mapPaymentIntent(iter.PaymentIntent()))
+	}
+	if err := iter.Err(); err != nil {
+		return nil, p.mapError(err)
+	}
+	return buildStripeList(items, iter.Meta(), func(x *gopay.Payment) string { return x.ID }), nil
+}
+
+// ListRefunds lists refunds with cursor-based pagination.
+// The cursor is a Stripe object ID used as starting_after.
+func (p *Provider) ListRefunds(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Refund], error) {
+	listParams := &stripe.RefundListParams{}
+	applyStripeListParams(&listParams.ListParams, ctx, params)
+
+	iter := p.api.Refunds.List(listParams)
+	var items []*gopay.Refund
+	for iter.Next() {
+		items = append(items, p.mapRefund(iter.Refund()))
+	}
+	if err := iter.Err(); err != nil {
+		return nil, p.mapError(err)
+	}
+	return buildStripeList(items, iter.Meta(), func(x *gopay.Refund) string { return x.ID }), nil
+}
+
+// ListCustomers lists customers with cursor-based pagination.
+// The cursor is a Stripe object ID used as starting_after.
+func (p *Provider) ListCustomers(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Customer], error) {
+	listParams := &stripe.CustomerListParams{}
+	applyStripeListParams(&listParams.ListParams, ctx, params)
+
+	iter := p.api.Customers.List(listParams)
+	var items []*gopay.Customer
+	for iter.Next() {
+		items = append(items, p.mapCustomer(iter.Customer()))
+	}
+	if err := iter.Err(); err != nil {
+		return nil, p.mapError(err)
+	}
+	return buildStripeList(items, iter.Meta(), func(x *gopay.Customer) string { return x.ID }), nil
+}
+
+// applyStripeListParams configures a Stripe list request for a single page from
+// the gopay pagination params. Single disables the SDK's auto-pagination so we
+// return one page at a time.
+func applyStripeListParams(lp *stripe.ListParams, ctx context.Context, params *gopay.ListParams) {
+	lp.Context = ctx
+	lp.Single = true
+	lp.Limit = stripe.Int64(int64(params.EffectiveLimit()))
+	if params != nil && params.Cursor != "" {
+		lp.StartingAfter = stripe.String(params.Cursor)
+	}
+}
+
+// buildStripeList assembles a gopay.List from the fetched items and Stripe's
+// list metadata, deriving the next cursor from the last item's ID.
+func buildStripeList[T any](items []T, meta *stripe.ListMeta, id func(T) string) *gopay.List[T] {
+	list := &gopay.List[T]{Items: items}
+	if meta != nil {
+		list.HasMore = meta.HasMore
+	}
+	if list.HasMore && len(items) > 0 {
+		list.NextCursor = id(items[len(items)-1])
+	}
+	return list
+}
+
 // VerifyWebhook verifies and parses a Stripe webhook.
 // Headers should contain "Stripe-Signature".
 func (p *Provider) VerifyWebhook(_ context.Context, payload []byte, headers map[string]string) (*gopay.WebhookEvent, error) {
