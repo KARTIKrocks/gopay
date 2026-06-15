@@ -160,16 +160,22 @@ is an optional capability (Stripe only at present; other providers return
 `ErrUnsupported`).
 
 ```go
-// Create a setup intent. Without a PaymentMethodID, return ClientSecret to the
+// Create a setup intent. Without a PaymentMethodID, hand si.ClientSecret to the
 // frontend to collect and confirm the card.
 si, err := client.CreateSetupIntent(ctx, payment.NewSetupIntentRequest().
     WithCustomer(customerID).
     WithUsage(payment.SetupIntentUsageOffSession))
+if err != nil {
+    log.Fatal(err)
+}
 
 // If you already hold a payment method, pass it to confirm immediately.
 si, err = client.CreateSetupIntent(ctx, payment.NewSetupIntentRequest().
     WithCustomer(customerID).
     WithPaymentMethod(paymentMethodID))
+if err != nil {
+    log.Fatal(err)
+}
 
 if si.IsSucceeded() {
     // si.PaymentMethodID is now stored on the customer for later charges.
@@ -177,7 +183,13 @@ if si.IsSucceeded() {
 
 // Retrieve or cancel later.
 si, err = client.GetSetupIntent(ctx, si.ID)
+if err != nil {
+    log.Fatal(err)
+}
 si, err = client.CancelSetupIntent(ctx, si.ID)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Webhooks

@@ -389,12 +389,15 @@ func (p *Provider) CreateSetupIntent(ctx context.Context, req *gopay.SetupIntent
 	if req.PaymentMethodID != "" {
 		params.PaymentMethod = stripe.String(req.PaymentMethodID)
 		params.Confirm = stripe.Bool(true)
+		// Stripe only accepts return_url when the intent is confirmed
+		// (confirm=true); otherwise the API rejects the request. In the
+		// frontend-confirmation flow the return URL is supplied at confirm time.
+		if req.ReturnURL != "" {
+			params.ReturnURL = stripe.String(req.ReturnURL)
+		}
 	}
 	if req.Description != "" {
 		params.Description = stripe.String(req.Description)
-	}
-	if req.ReturnURL != "" {
-		params.ReturnURL = stripe.String(req.ReturnURL)
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))

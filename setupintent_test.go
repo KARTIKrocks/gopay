@@ -153,7 +153,10 @@ func TestClientGetAndCancelSetupIntent(t *testing.T) {
 
 func TestClientGetSetupIntentEmptyID(t *testing.T) {
 	t.Parallel()
-	client, _ := NewClient(NewMockProvider())
+	client, err := NewClient(NewMockProvider())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 	if _, err := client.GetSetupIntent(context.Background(), ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
@@ -164,8 +167,11 @@ func TestClientGetSetupIntentEmptyID(t *testing.T) {
 
 func TestClientCreateSetupIntentInvalid(t *testing.T) {
 	t.Parallel()
-	client, _ := NewClient(NewMockProvider())
-	_, err := client.CreateSetupIntent(context.Background(), NewSetupIntentRequest().WithUsage("nonsense"))
+	client, err := NewClient(NewMockProvider())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	_, err = client.CreateSetupIntent(context.Background(), NewSetupIntentRequest().WithUsage("nonsense"))
 	if err == nil {
 		t.Error("expected validation error, got nil")
 	}
