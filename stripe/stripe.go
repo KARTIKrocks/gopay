@@ -2,6 +2,7 @@
 package stripe
 
 import (
+	"maps"
 	"context"
 	"encoding/json"
 	"errors"
@@ -206,9 +207,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -255,9 +254,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -300,9 +297,7 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -403,9 +398,7 @@ func (p *Provider) CreateSetupIntent(ctx context.Context, req *gopay.SetupIntent
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 	if req.IdempotencyKey != "" {
