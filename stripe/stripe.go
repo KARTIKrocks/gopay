@@ -493,6 +493,9 @@ func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gop
 // GetPlan retrieves a plan (Stripe Price) by ID.
 func (p *Provider) GetPlan(ctx context.Context, planID string) (*gopay.Plan, error) {
 	params := &stripe.PriceParams{}
+	// Expand the product so mapPlan can fall back to the product name when the
+	// price has no nickname.
+	params.AddExpand("product")
 	params.Context = ctx
 	price, err := p.api.Prices.Get(planID, params)
 	if err != nil {

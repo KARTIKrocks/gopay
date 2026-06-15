@@ -159,10 +159,16 @@ func TestClientCancelSubscription(t *testing.T) {
 	t.Parallel()
 	client := newSubClient(t)
 	ctx := context.Background()
-	plan, _ := client.CreatePlan(ctx, NewPlanRequest(USD(1000), BillingIntervalMonth))
+	plan, err := client.CreatePlan(ctx, NewPlanRequest(USD(1000), BillingIntervalMonth))
+	if err != nil {
+		t.Fatalf("CreatePlan: %v", err)
+	}
 
 	// Immediate cancel.
-	s1, _ := client.CreateSubscription(ctx, NewSubscriptionRequest("cus_1", plan.ID))
+	s1, err := client.CreateSubscription(ctx, NewSubscriptionRequest("cus_1", plan.ID))
+	if err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
 	canceled, err := client.CancelSubscription(ctx, s1.ID, nil)
 	if err != nil {
 		t.Fatalf("CancelSubscription: %v", err)
@@ -175,7 +181,10 @@ func TestClientCancelSubscription(t *testing.T) {
 	}
 
 	// Cancel at period end.
-	s2, _ := client.CreateSubscription(ctx, NewSubscriptionRequest("cus_1", plan.ID))
+	s2, err := client.CreateSubscription(ctx, NewSubscriptionRequest("cus_1", plan.ID))
+	if err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
 	atEnd, err := client.CancelSubscription(ctx, s2.ID, &CancelOptions{AtPeriodEnd: true})
 	if err != nil {
 		t.Fatalf("CancelSubscription(atPeriodEnd): %v", err)
