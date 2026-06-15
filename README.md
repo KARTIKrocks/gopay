@@ -34,6 +34,7 @@ go get github.com/KARTIKrocks/gopay/razorpay
 - Customer management
 - Payment method management
 - Setup intents (save a card for later off-session charges)
+- Subscriptions and recurring billing (plans + subscriptions)
 - Webhook verification with signature validation
 - Mock provider for testing
 - Builder pattern for requests
@@ -41,15 +42,16 @@ go get github.com/KARTIKrocks/gopay/razorpay
 
 ## Supported Providers
 
-| Provider | Payments | Refunds | Customers | Payment Methods | Setup Intents | Webhooks | Listing |
-| -------- | -------- | ------- | --------- | --------------- | ------------- | -------- | ------- |
-| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes      | Yes     |
-| PayPal   | Yes      | Yes     | No        | No              | No            | Yes      | No      |
-| Razorpay | Yes      | Yes     | Yes       | No              | No            | Yes      | Yes     |
+| Provider | Payments | Refunds | Customers | Payment Methods | Setup Intents | Subscriptions | Webhooks | Listing |
+| -------- | -------- | ------- | --------- | --------------- | ------------- | ------------- | -------- | ------- |
+| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes           | Yes      | Yes     |
+| PayPal   | Yes      | Yes     | No        | No              | No            | No            | Yes      | No      |
+| Razorpay | Yes      | Yes     | Yes       | No              | No            | No            | Yes      | Yes     |
 
 PayPal's Orders API has no list endpoint, so listing calls return `ErrUnsupported`
-for the PayPal provider. Setup intents (save-card-without-charging) are currently
-implemented for Stripe only; Razorpay and PayPal return `ErrUnsupported`.
+for the PayPal provider. Setup intents (save-card-without-charging) and
+subscriptions (recurring billing) are currently implemented for Stripe only;
+Razorpay and PayPal return `ErrUnsupported`.
 
 ## Quick Start
 
@@ -192,6 +194,42 @@ if err != nil {
 }
 ```
 
+## Subscriptions (recurring billing)
+
+Create a recurring plan, then subscribe a customer to it. The subscription
+charges the customer's payment method each billing cycle. This is an optional
+capability (Stripe only at present; other providers return `ErrUnsupported`).
+
+```go
+// Create a recurring plan (amount + interval). In Stripe this becomes a
+// recurring Price; plan.ID is what you subscribe customers to.
+plan, err := client.CreatePlan(ctx, payment.NewPlanRequest(payment.USD(1999), payment.BillingIntervalMonth).
+    WithName("Pro").
+    WithIntervalCount(1))
+if err != nil {
+    log.Fatal(err)
+}
+
+// Subscribe a customer, charging a saved payment method each cycle.
+sub, err := client.CreateSubscription(ctx, payment.NewSubscriptionRequest(customerID, plan.ID).
+    WithPaymentMethod(paymentMethodID).
+    WithTrialDays(14))
+if err != nil {
+    log.Fatal(err)
+}
+if sub.IsActive() {
+    // sub.CurrentPeriodEnd is the next charge date.
+}
+
+// Cancel at the end of the current period (keeps access until then)...
+sub, err = client.CancelSubscription(ctx, sub.ID, &payment.CancelOptions{AtPeriodEnd: true})
+// ...or immediately (nil opts).
+sub, err = client.CancelSubscription(ctx, sub.ID, nil)
+```
+
+React to billing outcomes via normalized webhook events (`WebhookInvoicePaymentSucceeded`,
+`WebhookInvoicePaymentFailed`, `WebhookSubscriptionCanceled`, …) — see below.
+
 ## Webhooks
 
 All providers support webhook signature verification through a unified interface:
@@ -230,6 +268,13 @@ case payment.WebhookSetupSucceeded:
     activateSavedCard(event.SetupIntentID)
 case payment.WebhookSetupFailed:
     notifySetupFailed(event.SetupIntentID)
+case payment.WebhookInvoicePaymentSucceeded:
+    // Recurring charge paid; event.SubscriptionID/InvoiceID and Amount are set.
+    extendSubscription(event.SubscriptionID, event.Amount)
+case payment.WebhookInvoicePaymentFailed:
+    flagPastDue(event.SubscriptionID)
+case payment.WebhookSubscriptionCanceled:
+    revokeAccess(event.SubscriptionID)
 case payment.WebhookUnknown:
     // not a normalized event; fall back to event.Type / event.Raw
 }

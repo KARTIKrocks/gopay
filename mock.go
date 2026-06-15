@@ -19,11 +19,14 @@ type MockProvider struct {
 	customers      map[string]*Customer
 	paymentMethods map[string]*PaymentMethod
 	setupIntents   map[string]*SetupIntent
+	plans          map[string]*Plan
+	subscriptions  map[string]*Subscription
 	createError    error
 	captureError   error
 	refundError    error
 	webhookError   error
 	setupError     error
+	subError       error
 	autoCapture    bool
 	autoSucceed    bool
 }
@@ -36,6 +39,8 @@ func NewMockProvider() *MockProvider {
 		customers:      make(map[string]*Customer),
 		paymentMethods: make(map[string]*PaymentMethod),
 		setupIntents:   make(map[string]*SetupIntent),
+		plans:          make(map[string]*Plan),
+		subscriptions:  make(map[string]*Subscription),
 		autoCapture:    true,
 		autoSucceed:    true,
 	}
@@ -447,6 +452,161 @@ func (p *MockProvider) CancelSetupIntent(_ context.Context, setupIntentID string
 	return si, nil
 }
 
+// CreatePlan creates a mock plan.
+func (p *MockProvider) CreatePlan(_ context.Context, req *PlanRequest) (*Plan, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.subError != nil {
+		return nil, p.subError
+	}
+
+	count := req.IntervalCount
+	if count <= 0 {
+		count = 1
+	}
+
+	meta := make(map[string]string, len(req.Metadata))
+	for k, v := range req.Metadata {
+		meta[k] = v
+	}
+
+	id := "plan_" + uuid.New().String()[:8]
+	plan := &Plan{
+		ID:            id,
+		Name:          req.Name,
+		Amount:        &Amount{Value: req.Amount.Value, Currency: req.Amount.Currency},
+		Interval:      req.Interval,
+		IntervalCount: count,
+		Metadata:      meta,
+		CreatedAt:     time.Now(),
+		Provider:      p.Name(),
+		Raw:           map[string]any{"mock": true},
+	}
+
+	p.plans[id] = plan
+	return plan, nil
+}
+
+// GetPlan retrieves a mock plan.
+func (p *MockProvider) GetPlan(_ context.Context, planID string) (*Plan, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	plan, ok := p.plans[planID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return plan, nil
+}
+
+// CreateSubscription creates a mock subscription. The plan must exist. When
+// auto-succeed is on the subscription is active (or trialing when TrialDays is
+// set); otherwise it is incomplete.
+func (p *MockProvider) CreateSubscription(_ context.Context, req *SubscriptionRequest) (*Subscription, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.subError != nil {
+		return nil, p.subError
+	}
+
+	plan, ok := p.plans[req.PlanID]
+	if !ok {
+		return nil, fmt.Errorf("%w: unknown plan", ErrSubscriptionFailed)
+	}
+
+	status := SubscriptionStatusIncomplete
+	if p.autoSucceed {
+		if req.TrialDays > 0 {
+			status = SubscriptionStatusTrialing
+		} else {
+			status = SubscriptionStatusActive
+		}
+	}
+
+	meta := make(map[string]string, len(req.Metadata))
+	for k, v := range req.Metadata {
+		meta[k] = v
+	}
+
+	now := time.Now()
+	periodEnd := addInterval(now, plan.Interval, plan.IntervalCount)
+	if req.TrialDays > 0 {
+		periodEnd = now.AddDate(0, 0, req.TrialDays)
+	}
+
+	id := "sub_" + uuid.New().String()[:8]
+	sub := &Subscription{
+		ID:                 id,
+		CustomerID:         req.CustomerID,
+		PlanID:             req.PlanID,
+		PaymentMethodID:    req.PaymentMethodID,
+		Status:             status,
+		CurrentPeriodStart: now,
+		CurrentPeriodEnd:   periodEnd,
+		Metadata:           meta,
+		CreatedAt:          now,
+		Provider:           p.Name(),
+		Raw:                map[string]any{"mock": true},
+	}
+
+	p.subscriptions[id] = sub
+	return sub, nil
+}
+
+// GetSubscription retrieves a mock subscription.
+func (p *MockProvider) GetSubscription(_ context.Context, subscriptionID string) (*Subscription, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	sub, ok := p.subscriptions[subscriptionID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return sub, nil
+}
+
+// CancelSubscription cancels a mock subscription, immediately or at period end.
+func (p *MockProvider) CancelSubscription(_ context.Context, subscriptionID string, opts *CancelOptions) (*Subscription, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	sub, ok := p.subscriptions[subscriptionID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	if opts != nil && opts.AtPeriodEnd {
+		sub.CancelAtPeriodEnd = true
+		return sub, nil
+	}
+
+	sub.Status = SubscriptionStatusCanceled
+	sub.CanceledAt = time.Now()
+	return sub, nil
+}
+
+// addInterval advances t by count units of the given billing interval. It is a
+// helper for computing the mock's next billing period.
+func addInterval(t time.Time, interval BillingInterval, count int) time.Time {
+	if count <= 0 {
+		count = 1
+	}
+	switch interval {
+	case BillingIntervalDay:
+		return t.AddDate(0, 0, count)
+	case BillingIntervalWeek:
+		return t.AddDate(0, 0, 7*count)
+	case BillingIntervalMonth:
+		return t.AddDate(0, count, 0)
+	case BillingIntervalYear:
+		return t.AddDate(count, 0, 0)
+	default:
+		return t.AddDate(0, count, 0)
+	}
+}
+
 // ListPayments lists mock payments with cursor-based pagination. Results are
 // ordered newest-first (by CreatedAt, then ID for determinism); the opaque
 // cursor is the ID of the last item on the previous page.
@@ -592,6 +752,15 @@ func (p *MockProvider) WithSetupError(err error) *MockProvider {
 	return p
 }
 
+// WithSubscriptionError sets the error to return on CreatePlan and
+// CreateSubscription.
+func (p *MockProvider) WithSubscriptionError(err error) *MockProvider {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.subError = err
+	return p
+}
+
 // WithCreateError sets the error to return on CreatePayment.
 func (p *MockProvider) WithCreateError(err error) *MockProvider {
 	p.mu.Lock()
@@ -660,6 +829,20 @@ func (p *MockProvider) SetSetupIntent(si *SetupIntent) {
 	p.setupIntents[si.ID] = si
 }
 
+// SetPlan manually sets a plan.
+func (p *MockProvider) SetPlan(plan *Plan) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.plans[plan.ID] = plan
+}
+
+// SetSubscription manually sets a subscription.
+func (p *MockProvider) SetSubscription(sub *Subscription) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.subscriptions[sub.ID] = sub
+}
+
 // Payments returns all payments.
 func (p *MockProvider) Payments() map[string]*Payment {
 	p.mu.RLock()
@@ -706,11 +889,14 @@ func (p *MockProvider) Reset() {
 	p.customers = make(map[string]*Customer)
 	p.paymentMethods = make(map[string]*PaymentMethod)
 	p.setupIntents = make(map[string]*SetupIntent)
+	p.plans = make(map[string]*Plan)
+	p.subscriptions = make(map[string]*Subscription)
 	p.createError = nil
 	p.captureError = nil
 	p.refundError = nil
 	p.webhookError = nil
 	p.setupError = nil
+	p.subError = nil
 	p.autoCapture = true
 	p.autoSucceed = true
 }
