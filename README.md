@@ -33,6 +33,7 @@ go get github.com/KARTIKrocks/gopay/razorpay
 - Refund processing (full and partial)
 - Customer management
 - Payment method management
+- Setup intents (save a card for later off-session charges)
 - Webhook verification with signature validation
 - Mock provider for testing
 - Builder pattern for requests
@@ -40,14 +41,15 @@ go get github.com/KARTIKrocks/gopay/razorpay
 
 ## Supported Providers
 
-| Provider | Payments | Refunds | Customers | Payment Methods | Webhooks | Listing |
-| -------- | -------- | ------- | --------- | --------------- | -------- | ------- |
-| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes      | Yes     |
-| PayPal   | Yes      | Yes     | No        | No              | Yes      | No      |
-| Razorpay | Yes      | Yes     | Yes       | No              | Yes      | Yes     |
+| Provider | Payments | Refunds | Customers | Payment Methods | Setup Intents | Webhooks | Listing |
+| -------- | -------- | ------- | --------- | --------------- | ------------- | -------- | ------- |
+| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes      | Yes     |
+| PayPal   | Yes      | Yes     | No        | No              | No            | Yes      | No      |
+| Razorpay | Yes      | Yes     | Yes       | No              | No            | Yes      | Yes     |
 
 PayPal's Orders API has no list endpoint, so listing calls return `ErrUnsupported`
-for the PayPal provider.
+for the PayPal provider. Setup intents (save-card-without-charging) are currently
+implemented for Stripe only; Razorpay and PayPal return `ErrUnsupported`.
 
 ## Quick Start
 
@@ -150,6 +152,46 @@ refund, err := client.Refund(ctx, payment.NewRefundRequest(paymentID).
     WithReason(payment.RefundReasonRequestedByCustomer))
 ```
 
+## Setup Intents (save a card without charging)
+
+A setup intent tokenizes and stores a payment method for future off-session
+charges — the standard primitive behind subscriptions and one-click checkout. It
+is an optional capability (Stripe only at present; other providers return
+`ErrUnsupported`).
+
+```go
+// Create a setup intent. Without a PaymentMethodID, hand si.ClientSecret to the
+// frontend to collect and confirm the card.
+si, err := client.CreateSetupIntent(ctx, payment.NewSetupIntentRequest().
+    WithCustomer(customerID).
+    WithUsage(payment.SetupIntentUsageOffSession))
+if err != nil {
+    log.Fatal(err)
+}
+
+// If you already hold a payment method, pass it to confirm immediately.
+si, err = client.CreateSetupIntent(ctx, payment.NewSetupIntentRequest().
+    WithCustomer(customerID).
+    WithPaymentMethod(paymentMethodID))
+if err != nil {
+    log.Fatal(err)
+}
+
+if si.IsSucceeded() {
+    // si.PaymentMethodID is now stored on the customer for later charges.
+}
+
+// Retrieve or cancel later.
+si, err = client.GetSetupIntent(ctx, si.ID)
+if err != nil {
+    log.Fatal(err)
+}
+si, err = client.CancelSetupIntent(ctx, si.ID)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
 ## Webhooks
 
 All providers support webhook signature verification through a unified interface:
@@ -183,6 +225,11 @@ case payment.WebhookPaymentFailed:
     markFailed(event.PaymentID)
 case payment.WebhookRefundSucceeded:
     recordRefund(event.RefundID, event.PaymentID, event.Amount)
+case payment.WebhookSetupSucceeded:
+    // event.SetupIntentID is populated; the payment method is ready for reuse.
+    activateSavedCard(event.SetupIntentID)
+case payment.WebhookSetupFailed:
+    notifySetupFailed(event.SetupIntentID)
 case payment.WebhookUnknown:
     // not a normalized event; fall back to event.Type / event.Raw
 }

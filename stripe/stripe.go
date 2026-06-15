@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -206,9 +207,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -255,9 +254,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -300,9 +297,7 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -370,6 +365,80 @@ func (p *Provider) ListPaymentMethods(ctx context.Context, customerID string) ([
 	}
 
 	return methods, nil
+}
+
+// CreateSetupIntent creates a setup intent to store a payment method for future
+// off-session charges without moving money. When the request carries a
+// PaymentMethodID, the intent is confirmed immediately.
+func (p *Provider) CreateSetupIntent(ctx context.Context, req *gopay.SetupIntentRequest) (*gopay.SetupIntent, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil setup intent request")
+	}
+
+	params := &stripe.SetupIntentParams{}
+
+	usage := req.Usage
+	if usage == "" {
+		usage = gopay.SetupIntentUsageOffSession
+	}
+	params.Usage = stripe.String(string(usage))
+
+	if req.CustomerID != "" {
+		params.Customer = stripe.String(req.CustomerID)
+	}
+	if req.PaymentMethodID != "" {
+		params.PaymentMethod = stripe.String(req.PaymentMethodID)
+		params.Confirm = stripe.Bool(true)
+		// Stripe only accepts return_url when the intent is confirmed
+		// (confirm=true); otherwise the API rejects the request. In the
+		// frontend-confirmation flow the return URL is supplied at confirm time.
+		if req.ReturnURL != "" {
+			params.ReturnURL = stripe.String(req.ReturnURL)
+		}
+	}
+	if req.Description != "" {
+		params.Description = stripe.String(req.Description)
+	}
+	if len(req.Metadata) > 0 {
+		meta := make(map[string]string, len(req.Metadata))
+		maps.Copy(meta, req.Metadata)
+		params.Metadata = meta
+	}
+	if req.IdempotencyKey != "" {
+		params.SetIdempotencyKey(req.IdempotencyKey)
+	}
+
+	params.Context = ctx
+	si, err := p.api.SetupIntents.New(params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSetupIntent(si), nil
+}
+
+// GetSetupIntent retrieves a setup intent.
+func (p *Provider) GetSetupIntent(ctx context.Context, setupIntentID string) (*gopay.SetupIntent, error) {
+	params := &stripe.SetupIntentParams{}
+	params.Context = ctx
+	si, err := p.api.SetupIntents.Get(setupIntentID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSetupIntent(si), nil
+}
+
+// CancelSetupIntent cancels a setup intent.
+func (p *Provider) CancelSetupIntent(ctx context.Context, setupIntentID string) (*gopay.SetupIntent, error) {
+	params := &stripe.SetupIntentCancelParams{}
+	params.Context = ctx
+	si, err := p.api.SetupIntents.Cancel(setupIntentID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSetupIntent(si), nil
 }
 
 // ListPayments lists payment intents with cursor-based pagination.
@@ -511,6 +580,9 @@ func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
 	}
 
 	switch obj.Object {
+	case "setup_intent":
+		ev.SetupIntentID = obj.ID
+		// setup_intent events carry no monetary amount.
 	case "refund":
 		ev.RefundID = obj.ID
 		ev.PaymentID = obj.PaymentIntent
@@ -564,6 +636,10 @@ func mapWebhookKind(eventType string) gopay.WebhookEventKind {
 		return gopay.WebhookRefundSucceeded
 	case "refund.failed":
 		return gopay.WebhookRefundFailed
+	case "setup_intent.succeeded":
+		return gopay.WebhookSetupSucceeded
+	case "setup_intent.setup_failed", "setup_intent.canceled":
+		return gopay.WebhookSetupFailed
 	// refund.created / refund.updated are classified from the refund object's
 	// status in buildWebhookEvent rather than assumed successful here.
 	default:
@@ -631,6 +707,58 @@ func (p *Provider) mapPaymentStatus(status stripe.PaymentIntentStatus) gopay.Pay
 		return gopay.PaymentStatusRequiresCapture
 	default:
 		return gopay.PaymentStatusPending
+	}
+}
+
+func (p *Provider) mapSetupIntent(si *stripe.SetupIntent) *gopay.SetupIntent {
+	out := &gopay.SetupIntent{
+		ID:           si.ID,
+		Status:       mapSetupIntentStatus(si.Status),
+		Usage:        gopay.SetupIntentUsage(si.Usage),
+		Description:  si.Description,
+		ClientSecret: si.ClientSecret,
+		Metadata:     si.Metadata,
+		CreatedAt:    time.Unix(si.Created, 0),
+		Provider:     p.Name(),
+		Raw: map[string]any{
+			"id":     si.ID,
+			"status": string(si.Status),
+		},
+	}
+
+	if si.Customer != nil {
+		out.CustomerID = si.Customer.ID
+	}
+	if si.PaymentMethod != nil {
+		out.PaymentMethodID = si.PaymentMethod.ID
+	}
+	if si.LastSetupError != nil {
+		out.FailureCode = string(si.LastSetupError.Code)
+		out.FailureMessage = si.LastSetupError.Msg
+	}
+	if si.NextAction != nil && si.NextAction.RedirectToURL != nil {
+		out.RedirectURL = si.NextAction.RedirectToURL.URL
+	}
+
+	return out
+}
+
+func mapSetupIntentStatus(status stripe.SetupIntentStatus) gopay.SetupIntentStatus {
+	switch status {
+	case stripe.SetupIntentStatusRequiresPaymentMethod:
+		return gopay.SetupIntentStatusRequiresPaymentMethod
+	case stripe.SetupIntentStatusRequiresConfirmation:
+		return gopay.SetupIntentStatusRequiresConfirmation
+	case stripe.SetupIntentStatusRequiresAction:
+		return gopay.SetupIntentStatusRequiresAction
+	case stripe.SetupIntentStatusProcessing:
+		return gopay.SetupIntentStatusProcessing
+	case stripe.SetupIntentStatusSucceeded:
+		return gopay.SetupIntentStatusSucceeded
+	case stripe.SetupIntentStatusCanceled:
+		return gopay.SetupIntentStatusCanceled
+	default:
+		return gopay.SetupIntentStatusRequiresPaymentMethod
 	}
 }
 

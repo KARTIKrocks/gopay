@@ -32,6 +32,7 @@ var (
 	ErrExpiredCard            = errors.New("gopay: expired card")
 	ErrPaymentFailed          = errors.New("gopay: payment failed")
 	ErrRefundFailed           = errors.New("gopay: refund failed")
+	ErrSetupFailed            = errors.New("gopay: setup failed")
 	ErrNotFound               = errors.New("gopay: not found")
 	ErrAlreadyRefunded        = errors.New("gopay: already refunded")
 	ErrAlreadyCaptured        = errors.New("gopay: already captured")
@@ -964,6 +965,55 @@ func (c *Client) ListCustomers(ctx context.Context, params *ListParams) (*List[*
 	return list, nil
 }
 
+// CreateSetupIntent sets up a payment method for future off-session charges
+// without moving money (if supported).
+func (c *Client) CreateSetupIntent(ctx context.Context, req *SetupIntentRequest) (*SetupIntent, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	sp, ok := c.provider.(SetupIntentProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	si, err := sp.CreateSetupIntent(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create setup intent: %w", err)
+	}
+	return si, nil
+}
+
+// GetSetupIntent retrieves a setup intent (if supported).
+func (c *Client) GetSetupIntent(ctx context.Context, setupIntentID string) (*SetupIntent, error) {
+	if setupIntentID == "" {
+		return nil, ErrNotFound
+	}
+	sp, ok := c.provider.(SetupIntentProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	si, err := sp.GetSetupIntent(ctx, setupIntentID)
+	if err != nil {
+		return nil, fmt.Errorf("get setup intent: %w", err)
+	}
+	return si, nil
+}
+
+// CancelSetupIntent cancels a setup intent (if supported).
+func (c *Client) CancelSetupIntent(ctx context.Context, setupIntentID string) (*SetupIntent, error) {
+	if setupIntentID == "" {
+		return nil, ErrNotFound
+	}
+	sp, ok := c.provider.(SetupIntentProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	si, err := sp.CancelSetupIntent(ctx, setupIntentID)
+	if err != nil {
+		return nil, fmt.Errorf("cancel setup intent: %w", err)
+	}
+	return si, nil
+}
+
 // WebhookEventKind is a provider-normalized webhook event category. It lets
 // callers switch on a unified set of event meanings regardless of provider,
 // instead of parsing each provider's raw event-type string.
@@ -979,6 +1029,8 @@ const (
 	WebhookPaymentCanceled  WebhookEventKind = "payment.canceled"  // payment canceled/voided
 	WebhookRefundSucceeded  WebhookEventKind = "refund.succeeded"  // refund completed
 	WebhookRefundFailed     WebhookEventKind = "refund.failed"     // refund failed
+	WebhookSetupSucceeded   WebhookEventKind = "setup.succeeded"   // payment method setup completed
+	WebhookSetupFailed      WebhookEventKind = "setup.failed"      // payment method setup failed
 )
 
 // String returns the string representation.
@@ -1017,6 +1069,10 @@ type WebhookEvent struct {
 	// RefundID is the provider refund identifier, when the event concerns a
 	// refund; empty otherwise.
 	RefundID string
+
+	// SetupIntentID is the provider setup-intent identifier, when the event
+	// concerns a payment-method setup; empty otherwise.
+	SetupIntentID string
 
 	// Amount is the normalized amount in minor units; nil when the event
 	// carries no amount or the amount could not be parsed.

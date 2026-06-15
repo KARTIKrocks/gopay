@@ -18,10 +18,12 @@ type MockProvider struct {
 	refunds        map[string]*Refund
 	customers      map[string]*Customer
 	paymentMethods map[string]*PaymentMethod
+	setupIntents   map[string]*SetupIntent
 	createError    error
 	captureError   error
 	refundError    error
 	webhookError   error
+	setupError     error
 	autoCapture    bool
 	autoSucceed    bool
 }
@@ -33,6 +35,7 @@ func NewMockProvider() *MockProvider {
 		refunds:        make(map[string]*Refund),
 		customers:      make(map[string]*Customer),
 		paymentMethods: make(map[string]*PaymentMethod),
+		setupIntents:   make(map[string]*SetupIntent),
 		autoCapture:    true,
 		autoSucceed:    true,
 	}
@@ -365,6 +368,85 @@ func (p *MockProvider) ListPaymentMethods(ctx context.Context, customerID string
 	return methods, nil
 }
 
+// CreateSetupIntent creates a mock setup intent. When a PaymentMethodID is
+// supplied and auto-succeed is on, the intent is marked succeeded; otherwise it
+// awaits confirmation.
+func (p *MockProvider) CreateSetupIntent(_ context.Context, req *SetupIntentRequest) (*SetupIntent, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.setupError != nil {
+		return nil, p.setupError
+	}
+
+	usage := req.Usage
+	if usage == "" {
+		usage = SetupIntentUsageOffSession
+	}
+
+	status := SetupIntentStatusRequiresPaymentMethod
+	if req.PaymentMethodID != "" {
+		if p.autoSucceed {
+			status = SetupIntentStatusSucceeded
+		} else {
+			status = SetupIntentStatusRequiresConfirmation
+		}
+	}
+
+	meta := make(map[string]string, len(req.Metadata))
+	for k, v := range req.Metadata {
+		meta[k] = v
+	}
+
+	id := "seti_" + uuid.New().String()[:8]
+	si := &SetupIntent{
+		ID:              id,
+		Status:          status,
+		CustomerID:      req.CustomerID,
+		PaymentMethodID: req.PaymentMethodID,
+		Usage:           usage,
+		Description:     req.Description,
+		ClientSecret:    id + "_secret_" + uuid.New().String()[:16],
+		Metadata:        meta,
+		CreatedAt:       time.Now(),
+		Provider:        p.Name(),
+		Raw:             map[string]any{"mock": true},
+	}
+
+	p.setupIntents[id] = si
+	return si, nil
+}
+
+// GetSetupIntent retrieves a mock setup intent.
+func (p *MockProvider) GetSetupIntent(_ context.Context, setupIntentID string) (*SetupIntent, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	si, ok := p.setupIntents[setupIntentID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return si, nil
+}
+
+// CancelSetupIntent cancels a mock setup intent.
+func (p *MockProvider) CancelSetupIntent(_ context.Context, setupIntentID string) (*SetupIntent, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	si, ok := p.setupIntents[setupIntentID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	if si.Status == SetupIntentStatusSucceeded {
+		return nil, fmt.Errorf("%w: cannot cancel a succeeded setup intent", ErrSetupFailed)
+	}
+
+	si.Status = SetupIntentStatusCanceled
+	return si, nil
+}
+
 // ListPayments lists mock payments with cursor-based pagination. Results are
 // ordered newest-first (by CreatedAt, then ID for determinism); the opaque
 // cursor is the ID of the last item on the previous page.
@@ -502,6 +584,14 @@ func (p *MockProvider) WithWebhookError(err error) *MockProvider {
 	return p
 }
 
+// WithSetupError sets the error to return on CreateSetupIntent.
+func (p *MockProvider) WithSetupError(err error) *MockProvider {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setupError = err
+	return p
+}
+
 // WithCreateError sets the error to return on CreatePayment.
 func (p *MockProvider) WithCreateError(err error) *MockProvider {
 	p.mu.Lock()
@@ -563,6 +653,13 @@ func (p *MockProvider) SetCustomer(customer *Customer) {
 	p.customers[customer.ID] = customer
 }
 
+// SetSetupIntent manually sets a setup intent.
+func (p *MockProvider) SetSetupIntent(si *SetupIntent) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.setupIntents[si.ID] = si
+}
+
 // Payments returns all payments.
 func (p *MockProvider) Payments() map[string]*Payment {
 	p.mu.RLock()
@@ -608,10 +705,12 @@ func (p *MockProvider) Reset() {
 	p.refunds = make(map[string]*Refund)
 	p.customers = make(map[string]*Customer)
 	p.paymentMethods = make(map[string]*PaymentMethod)
+	p.setupIntents = make(map[string]*SetupIntent)
 	p.createError = nil
 	p.captureError = nil
 	p.refundError = nil
 	p.webhookError = nil
+	p.setupError = nil
 	p.autoCapture = true
 	p.autoSucceed = true
 }
