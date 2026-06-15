@@ -33,6 +33,7 @@ var (
 	ErrPaymentFailed          = errors.New("gopay: payment failed")
 	ErrRefundFailed           = errors.New("gopay: refund failed")
 	ErrSetupFailed            = errors.New("gopay: setup failed")
+	ErrSubscriptionFailed     = errors.New("gopay: subscription failed")
 	ErrNotFound               = errors.New("gopay: not found")
 	ErrAlreadyRefunded        = errors.New("gopay: already refunded")
 	ErrAlreadyCaptured        = errors.New("gopay: already captured")
@@ -1014,6 +1015,87 @@ func (c *Client) CancelSetupIntent(ctx context.Context, setupIntentID string) (*
 	return si, nil
 }
 
+// CreatePlan creates a recurring plan (if supported).
+func (c *Client) CreatePlan(ctx context.Context, req *PlanRequest) (*Plan, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	sp, ok := c.provider.(SubscriptionProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	plan, err := sp.CreatePlan(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create plan: %w", err)
+	}
+	return plan, nil
+}
+
+// GetPlan retrieves a plan (if supported).
+func (c *Client) GetPlan(ctx context.Context, planID string) (*Plan, error) {
+	if planID == "" {
+		return nil, ErrNotFound
+	}
+	sp, ok := c.provider.(SubscriptionProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	plan, err := sp.GetPlan(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("get plan: %w", err)
+	}
+	return plan, nil
+}
+
+// CreateSubscription subscribes a customer to a plan (if supported).
+func (c *Client) CreateSubscription(ctx context.Context, req *SubscriptionRequest) (*Subscription, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	sp, ok := c.provider.(SubscriptionProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	sub, err := sp.CreateSubscription(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("create subscription: %w", err)
+	}
+	return sub, nil
+}
+
+// GetSubscription retrieves a subscription (if supported).
+func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (*Subscription, error) {
+	if subscriptionID == "" {
+		return nil, ErrNotFound
+	}
+	sp, ok := c.provider.(SubscriptionProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	sub, err := sp.GetSubscription(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("get subscription: %w", err)
+	}
+	return sub, nil
+}
+
+// CancelSubscription cancels a subscription, immediately or at period end (if
+// supported). A nil opts cancels immediately.
+func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, opts *CancelOptions) (*Subscription, error) {
+	if subscriptionID == "" {
+		return nil, ErrNotFound
+	}
+	sp, ok := c.provider.(SubscriptionProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	sub, err := sp.CancelSubscription(ctx, subscriptionID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("cancel subscription: %w", err)
+	}
+	return sub, nil
+}
+
 // WebhookEventKind is a provider-normalized webhook event category. It lets
 // callers switch on a unified set of event meanings regardless of provider,
 // instead of parsing each provider's raw event-type string.
@@ -1031,6 +1113,13 @@ const (
 	WebhookRefundFailed     WebhookEventKind = "refund.failed"     // refund failed
 	WebhookSetupSucceeded   WebhookEventKind = "setup.succeeded"   // payment method setup completed
 	WebhookSetupFailed      WebhookEventKind = "setup.failed"      // payment method setup failed
+
+	WebhookSubscriptionCreated  WebhookEventKind = "subscription.created"  // subscription started
+	WebhookSubscriptionUpdated  WebhookEventKind = "subscription.updated"  // subscription changed (plan/status)
+	WebhookSubscriptionCanceled WebhookEventKind = "subscription.canceled" // subscription ended
+
+	WebhookInvoicePaymentSucceeded WebhookEventKind = "invoice.payment_succeeded" // recurring charge paid
+	WebhookInvoicePaymentFailed    WebhookEventKind = "invoice.payment_failed"    // recurring charge failed
 )
 
 // String returns the string representation.
@@ -1073,6 +1162,14 @@ type WebhookEvent struct {
 	// SetupIntentID is the provider setup-intent identifier, when the event
 	// concerns a payment-method setup; empty otherwise.
 	SetupIntentID string
+
+	// SubscriptionID is the provider subscription identifier, when the event
+	// concerns a subscription or recurring invoice; empty otherwise.
+	SubscriptionID string
+
+	// InvoiceID is the provider invoice identifier, when the event concerns a
+	// recurring invoice; empty otherwise.
+	InvoiceID string
 
 	// Amount is the normalized amount in minor units; nil when the event
 	// carries no amount or the amount could not be parsed.

@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-15
+
+Subscriptions and recurring billing. Providers that support it can now create
+plans and subscribe customers to them through a unified `Client` API, building on
+the setup-intent primitive from v0.4.0. All changes are backward compatible: only
+additive symbols, a new optional interface, and new `WebhookEvent` fields;
+existing code is unaffected.
+
+### Added
+
+- **Core**: `SubscriptionProvider` — a new optional provider interface
+  (`CreatePlan`, `GetPlan`, `CreateSubscription`, `GetSubscription`,
+  `CancelSubscription`) gated by the `Client` with a runtime type assertion,
+  returning `ErrUnsupported` for providers that don't implement it.
+- **Core**: matching `Client` methods following the existing validate →
+  type-assert → `ErrUnsupported` → call → wrap-error pattern.
+- **Core**: `PlanRequest` builder (`WithName`/`WithIntervalCount`/`WithMetadata`/
+  `WithIdempotencyKey` + `Validate`) and `Plan` result type;
+  `SubscriptionRequest` builder (`WithPaymentMethod`/`WithTrialDays`/
+  `WithMetadata`/`WithIdempotencyKey` + `Validate`) and `Subscription` result
+  type (`IsActive`, current-period fields, `CancelAtPeriodEnd`).
+- **Core**: `BillingInterval` (day/week/month/year) and `SubscriptionStatus`
+  enums, `CancelOptions` (immediate vs at-period-end), and the
+  `ErrSubscriptionFailed` sentinel error.
+- **Core**: webhook event kinds `WebhookSubscriptionCreated`/`Updated`/`Canceled`
+  and `WebhookInvoicePaymentSucceeded`/`Failed`, plus `WebhookEvent.SubscriptionID`
+  and `WebhookEvent.InvoiceID` fields.
+- **Stripe**: implements `SubscriptionProvider` (plans map to recurring Prices
+  with an inline Product; subscriptions support trials, a default payment method,
+  and immediate or at-period-end cancellation) and normalizes
+  `customer.subscription.*` and `invoice.payment_*` webhook events.
+- **MockProvider**: implements `SubscriptionProvider` (honoring `WithAutoSucceed`)
+  with `WithSubscriptionError`, `SetPlan`, and `SetSubscription` helpers.
+
+### Notes
+
+- **Razorpay** and **PayPal**: do not yet implement `SubscriptionProvider`, so
+  subscription calls return `ErrUnsupported`. Plan changes/proration
+  (`UpdateSubscription`), `ListSubscriptions`, and full invoice CRUD are planned
+  follow-ups.
+
+### Tooling & Tests
+
+- Core, mock, and Stripe subscription tests covering plan/subscription
+  validation, `Client` dispatch, trial/cancel semantics, status/interval mapping,
+  webhook normalization, and the `ErrUnsupported` path.
+
 ## [0.4.0] - 2026-06-15
 
 Setup intents (save-card-without-charging). Providers that support it can now
@@ -205,6 +252,7 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.5.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.0
 [0.4.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.4.0
 [0.3.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.2.0

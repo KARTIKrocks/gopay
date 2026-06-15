@@ -441,6 +441,141 @@ func (p *Provider) CancelSetupIntent(ctx context.Context, setupIntentID string) 
 	return p.mapSetupIntent(si), nil
 }
 
+// CreatePlan creates a recurring plan. In Stripe this is modeled as a recurring
+// Price with an inline Product; the returned plan ID is the Price ID.
+func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gopay.Plan, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil plan request")
+	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil amount")
+	}
+
+	count := req.IntervalCount
+	if count <= 0 {
+		count = 1
+	}
+	name := req.Name
+	if name == "" {
+		name = "gopay plan"
+	}
+
+	params := &stripe.PriceParams{
+		Currency:   stripe.String(req.Amount.Currency),
+		UnitAmount: stripe.Int64(req.Amount.Value),
+		Nickname:   stripe.String(name),
+		Recurring: &stripe.PriceRecurringParams{
+			Interval:      stripe.String(string(req.Interval)),
+			IntervalCount: stripe.Int64(int64(count)),
+		},
+		ProductData: &stripe.PriceProductDataParams{
+			Name: stripe.String(name),
+		},
+	}
+	if len(req.Metadata) > 0 {
+		meta := make(map[string]string, len(req.Metadata))
+		maps.Copy(meta, req.Metadata)
+		params.Metadata = meta
+	}
+	if req.IdempotencyKey != "" {
+		params.SetIdempotencyKey(req.IdempotencyKey)
+	}
+
+	params.Context = ctx
+	price, err := p.api.Prices.New(params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapPlan(price), nil
+}
+
+// GetPlan retrieves a plan (Stripe Price) by ID.
+func (p *Provider) GetPlan(ctx context.Context, planID string) (*gopay.Plan, error) {
+	params := &stripe.PriceParams{}
+	params.Context = ctx
+	price, err := p.api.Prices.Get(planID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapPlan(price), nil
+}
+
+// CreateSubscription subscribes a customer to a plan.
+func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.SubscriptionRequest) (*gopay.Subscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil subscription request")
+	}
+
+	params := &stripe.SubscriptionParams{
+		Customer: stripe.String(req.CustomerID),
+		Items: []*stripe.SubscriptionItemsParams{
+			{Price: stripe.String(req.PlanID)},
+		},
+	}
+	if req.PaymentMethodID != "" {
+		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
+	}
+	if req.TrialDays > 0 {
+		params.TrialPeriodDays = stripe.Int64(int64(req.TrialDays))
+	}
+	if len(req.Metadata) > 0 {
+		meta := make(map[string]string, len(req.Metadata))
+		maps.Copy(meta, req.Metadata)
+		params.Metadata = meta
+	}
+	if req.IdempotencyKey != "" {
+		params.SetIdempotencyKey(req.IdempotencyKey)
+	}
+
+	params.Context = ctx
+	sub, err := p.api.Subscriptions.New(params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSubscription(sub), nil
+}
+
+// GetSubscription retrieves a subscription by ID.
+func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (*gopay.Subscription, error) {
+	params := &stripe.SubscriptionParams{}
+	params.Context = ctx
+	sub, err := p.api.Subscriptions.Get(subscriptionID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSubscription(sub), nil
+}
+
+// CancelSubscription cancels a subscription. When opts.AtPeriodEnd is set the
+// subscription is updated to cancel at period end; otherwise it is canceled
+// immediately.
+func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string, opts *gopay.CancelOptions) (*gopay.Subscription, error) {
+	if opts != nil && opts.AtPeriodEnd {
+		params := &stripe.SubscriptionParams{
+			CancelAtPeriodEnd: stripe.Bool(true),
+		}
+		params.Context = ctx
+		sub, err := p.api.Subscriptions.Update(subscriptionID, params)
+		if err != nil {
+			return nil, p.mapError(err)
+		}
+		return p.mapSubscription(sub), nil
+	}
+
+	params := &stripe.SubscriptionCancelParams{}
+	params.Context = ctx
+	sub, err := p.api.Subscriptions.Cancel(subscriptionID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapSubscription(sub), nil
+}
+
 // ListPayments lists payment intents with cursor-based pagination.
 // The cursor is a Stripe object ID used as starting_after.
 func (p *Provider) ListPayments(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Payment], error) {
@@ -561,28 +696,50 @@ func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
 		Kind:     mapWebhookKind(string(event.Type)),
 	}
 
-	var obj struct {
-		Object         string `json:"object"`
-		ID             string `json:"id"`
-		Status         string `json:"status"`
-		Amount         int64  `json:"amount"`
-		AmountRefunded int64  `json:"amount_refunded"`
-		Currency       string `json:"currency"`
-		PaymentIntent  string `json:"payment_intent"`
-		Refunds        struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-		} `json:"refunds"`
-	}
+	var obj stripeWebhookObject
 	if err := json.Unmarshal(event.Data.Raw, &obj); err != nil {
 		return ev
 	}
+	obj.normalizeInto(ev)
+	return ev
+}
 
+// stripeWebhookObject is the subset of a Stripe event's data object that we pull
+// normalized identifiers and amounts from across the event types we map.
+type stripeWebhookObject struct {
+	Object         string `json:"object"`
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	Amount         int64  `json:"amount"`
+	AmountRefunded int64  `json:"amount_refunded"`
+	Currency       string `json:"currency"`
+	PaymentIntent  string `json:"payment_intent"`
+	Subscription   string `json:"subscription"`
+	AmountPaid     int64  `json:"amount_paid"`
+	Refunds        struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	} `json:"refunds"`
+}
+
+// normalizeInto populates the normalized identifier/amount fields of ev based on
+// the object's type, keeping the per-type extraction out of buildWebhookEvent.
+func (obj stripeWebhookObject) normalizeInto(ev *gopay.WebhookEvent) {
 	switch obj.Object {
 	case "setup_intent":
 		ev.SetupIntentID = obj.ID
 		// setup_intent events carry no monetary amount.
+	case "subscription":
+		ev.SubscriptionID = obj.ID
+		// subscription events carry no single monetary amount.
+	case "invoice":
+		ev.InvoiceID = obj.ID
+		ev.SubscriptionID = obj.Subscription
+		// Report the amount actually paid for the recurring charge.
+		if obj.Currency != "" {
+			ev.Amount = gopay.NewAmount(obj.AmountPaid, obj.Currency)
+		}
 	case "refund":
 		ev.RefundID = obj.ID
 		ev.PaymentID = obj.PaymentIntent
@@ -618,7 +775,6 @@ func buildWebhookEvent(event stripe.Event) *gopay.WebhookEvent {
 			ev.Amount = gopay.NewAmount(obj.Amount, obj.Currency)
 		}
 	}
-	return ev
 }
 
 // mapWebhookKind maps a Stripe event type to a normalized webhook event kind.
@@ -640,6 +796,16 @@ func mapWebhookKind(eventType string) gopay.WebhookEventKind {
 		return gopay.WebhookSetupSucceeded
 	case "setup_intent.setup_failed", "setup_intent.canceled":
 		return gopay.WebhookSetupFailed
+	case "customer.subscription.created":
+		return gopay.WebhookSubscriptionCreated
+	case "customer.subscription.updated":
+		return gopay.WebhookSubscriptionUpdated
+	case "customer.subscription.deleted":
+		return gopay.WebhookSubscriptionCanceled
+	case "invoice.payment_succeeded":
+		return gopay.WebhookInvoicePaymentSucceeded
+	case "invoice.payment_failed":
+		return gopay.WebhookInvoicePaymentFailed
 	// refund.created / refund.updated are classified from the refund object's
 	// status in buildWebhookEvent rather than assumed successful here.
 	default:
@@ -759,6 +925,99 @@ func mapSetupIntentStatus(status stripe.SetupIntentStatus) gopay.SetupIntentStat
 		return gopay.SetupIntentStatusCanceled
 	default:
 		return gopay.SetupIntentStatusRequiresPaymentMethod
+	}
+}
+
+func (p *Provider) mapPlan(price *stripe.Price) *gopay.Plan {
+	plan := &gopay.Plan{
+		ID:        price.ID,
+		Name:      price.Nickname,
+		Amount:    gopay.NewAmount(price.UnitAmount, string(price.Currency)),
+		Metadata:  price.Metadata,
+		CreatedAt: time.Unix(price.Created, 0),
+		Provider:  p.Name(),
+		Raw: map[string]any{
+			"id": price.ID,
+		},
+	}
+
+	if price.Recurring != nil {
+		plan.Interval = mapBillingInterval(price.Recurring.Interval)
+		plan.IntervalCount = int(price.Recurring.IntervalCount)
+	}
+	// When the price has no nickname, fall back to the (expanded) product name.
+	if plan.Name == "" && price.Product != nil {
+		plan.Name = price.Product.Name
+	}
+
+	return plan
+}
+
+func mapBillingInterval(interval stripe.PriceRecurringInterval) gopay.BillingInterval {
+	switch interval {
+	case stripe.PriceRecurringIntervalDay:
+		return gopay.BillingIntervalDay
+	case stripe.PriceRecurringIntervalWeek:
+		return gopay.BillingIntervalWeek
+	case stripe.PriceRecurringIntervalMonth:
+		return gopay.BillingIntervalMonth
+	case stripe.PriceRecurringIntervalYear:
+		return gopay.BillingIntervalYear
+	default:
+		return gopay.BillingInterval(interval)
+	}
+}
+
+func (p *Provider) mapSubscription(sub *stripe.Subscription) *gopay.Subscription {
+	out := &gopay.Subscription{
+		ID:                 sub.ID,
+		Status:             mapSubscriptionStatus(sub.Status),
+		CancelAtPeriodEnd:  sub.CancelAtPeriodEnd,
+		CurrentPeriodStart: time.Unix(sub.CurrentPeriodStart, 0),
+		CurrentPeriodEnd:   time.Unix(sub.CurrentPeriodEnd, 0),
+		Metadata:           sub.Metadata,
+		CreatedAt:          time.Unix(sub.Created, 0),
+		Provider:           p.Name(),
+		Raw: map[string]any{
+			"id":     sub.ID,
+			"status": string(sub.Status),
+		},
+	}
+
+	if sub.Customer != nil {
+		out.CustomerID = sub.Customer.ID
+	}
+	if sub.DefaultPaymentMethod != nil {
+		out.PaymentMethodID = sub.DefaultPaymentMethod.ID
+	}
+	if sub.CanceledAt > 0 {
+		out.CanceledAt = time.Unix(sub.CanceledAt, 0)
+	}
+	if sub.Items != nil && len(sub.Items.Data) > 0 && sub.Items.Data[0].Price != nil {
+		out.PlanID = sub.Items.Data[0].Price.ID
+	}
+
+	return out
+}
+
+func mapSubscriptionStatus(status stripe.SubscriptionStatus) gopay.SubscriptionStatus {
+	switch status {
+	case stripe.SubscriptionStatusActive:
+		return gopay.SubscriptionStatusActive
+	case stripe.SubscriptionStatusTrialing:
+		return gopay.SubscriptionStatusTrialing
+	case stripe.SubscriptionStatusPastDue:
+		return gopay.SubscriptionStatusPastDue
+	case stripe.SubscriptionStatusCanceled:
+		return gopay.SubscriptionStatusCanceled
+	case stripe.SubscriptionStatusIncomplete:
+		return gopay.SubscriptionStatusIncomplete
+	case stripe.SubscriptionStatusIncompleteExpired:
+		return gopay.SubscriptionStatusIncompleteExpired
+	case stripe.SubscriptionStatusUnpaid:
+		return gopay.SubscriptionStatusUnpaid
+	default:
+		return gopay.SubscriptionStatus(status)
 	}
 }
 
