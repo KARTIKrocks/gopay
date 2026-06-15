@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-15
+
+Setup intents (save-card-without-charging). Providers that support it can now
+tokenize and store a payment method for future off-session charges — the standard
+primitive behind subscriptions and one-click checkout — through a unified
+`Client` API. All changes are backward compatible: only additive symbols, a new
+optional interface, and a new `WebhookEvent` field; existing code is unaffected.
+
+### Added
+
+- **Core**: `SetupIntentProvider` — a new optional provider interface
+  (`CreateSetupIntent`, `GetSetupIntent`, `CancelSetupIntent`) gated by the
+  `Client` with a runtime type assertion, returning `ErrUnsupported` for
+  providers that don't implement it.
+- **Core**: `Client.CreateSetupIntent`, `Client.GetSetupIntent`, and
+  `Client.CancelSetupIntent`, following the existing validate → type-assert →
+  `ErrUnsupported` → call → wrap-error pattern.
+- **Core**: `SetupIntentRequest` (builder with `WithCustomer`,
+  `WithPaymentMethod`, `WithUsage`, `WithDescription`, `WithReturnURL`,
+  `WithMetadata`, `WithIdempotencyKey`, plus `Validate`) and the `SetupIntent`
+  result type (`IsSucceeded`, `RequiresAction`). Confirmation is folded into
+  creation: setting `PaymentMethodID` confirms immediately, mirroring
+  `CreatePayment`.
+- **Core**: `SetupIntentStatus` and `SetupIntentUsage` (`off_session` default /
+  `on_session`) enums, and the `ErrSetupFailed` sentinel error.
+- **Core**: `WebhookSetupSucceeded` / `WebhookSetupFailed` webhook event kinds and
+  a new `WebhookEvent.SetupIntentID` field.
+- **Stripe**: implements `SetupIntentProvider` using the native SetupIntents API,
+  and normalizes `setup_intent.succeeded` / `setup_intent.setup_failed` /
+  `setup_intent.canceled` webhook events.
+- **MockProvider**: implements `SetupIntentProvider` (honoring `WithAutoSucceed`)
+  with `WithSetupError` and `SetSetupIntent` helpers for tests.
+
+### Notes
+
+- **Razorpay** and **PayPal**: do not yet implement `SetupIntentProvider`, so
+  setup-intent calls return `ErrUnsupported`. Razorpay tokens / PayPal Vault
+  setup-tokens are planned as follow-ups.
+
+### Tooling & Tests
+
+- Core, mock, and Stripe setup-intent tests covering request validation, `Client`
+  dispatch, status/usage mapping, webhook normalization, and the `ErrUnsupported`
+  path.
+
 ## [0.3.0] - 2026-06-14
 
 Listing and pagination. Providers that support it can now list payments, refunds,
@@ -160,6 +205,7 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.4.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.4.0
 [0.3.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.2.0
 [0.1.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.1.1
