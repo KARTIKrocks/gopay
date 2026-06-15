@@ -2,11 +2,11 @@
 package stripe
 
 import (
-	"maps"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"

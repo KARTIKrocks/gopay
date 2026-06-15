@@ -818,7 +818,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 	}
 
 	p.accessToken = tokenResp.AccessToken
-	bufferSecs := max(tokenResp.ExpiresIn - 60, 0)
+	bufferSecs := max(tokenResp.ExpiresIn-60, 0)
 	p.tokenExpiry = time.Now().Add(time.Duration(bufferSecs) * time.Second)
 
 	return p.accessToken, nil
