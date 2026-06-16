@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-06-16
+
+Quality and correctness pass triaging an automated full-repository review. All
+changes are backward compatible — no exported signatures changed.
+
+### Fixed
+
+- **Stripe**: a caller-supplied `*http.Client` with no timeout now receives a
+  default 30s timeout, applied on a copy so the caller's client is never mutated,
+  preventing a custom client from blocking requests indefinitely. This brings
+  Stripe in line with PayPal and Razorpay, which already did this.
+
+### Changed
+
+- **Razorpay**: `Config.WithHTTPClient` now copies the caller's `*http.Client`
+  and applies a default 30s timeout at the builder level, mirroring PayPal's
+  defensive pattern (previously the default was only applied later in
+  `NewProvider`).
+
+### Docs
+
+- **Core**: corrected the `currencyMinorUnits` doc comment, which referenced a
+  3-decimal exponent (e.g. KWD) the table never contained — it holds only
+  exponents 0 (e.g. JPY) and 2.
+
 ## [0.5.0] - 2026-06-15
 
 Subscriptions and recurring billing. Providers that support it can now create
@@ -252,6 +277,7 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.5.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.1
 [0.5.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.0
 [0.4.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.4.0
 [0.3.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.3.0
