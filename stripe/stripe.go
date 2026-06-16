@@ -66,6 +66,14 @@ func NewProvider(config Config) (*Provider, error) {
 
 	var backends *stripe.Backends
 	if config.HTTPClient != nil {
+		// Copy the caller's client before applying a default timeout so we never
+		// mutate a *http.Client the caller still owns, and so a custom client
+		// with no timeout can't block requests indefinitely.
+		if config.HTTPClient.Timeout == 0 {
+			clientCopy := *config.HTTPClient
+			clientCopy.Timeout = 30 * time.Second
+			config.HTTPClient = &clientCopy
+		}
 		httpBackend := stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
 			HTTPClient: config.HTTPClient,
 		})
