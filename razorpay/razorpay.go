@@ -63,9 +63,19 @@ func (c Config) WithWebhookSecret(secret string) Config {
 	return c
 }
 
-// WithHTTPClient sets a custom HTTP client.
+// WithHTTPClient sets a custom HTTP client. The client is copied before use so
+// the caller retains sole ownership of theirs, and a default 30s timeout is
+// applied when none is set.
 func (c Config) WithHTTPClient(client *http.Client) Config {
-	c.HTTPClient = client
+	if client != nil {
+		clientCopy := *client
+		if clientCopy.Timeout == 0 {
+			clientCopy.Timeout = 30 * time.Second
+		}
+		c.HTTPClient = &clientCopy
+	} else {
+		c.HTTPClient = client
+	}
 	return c
 }
 

@@ -7,8 +7,8 @@ import (
 )
 
 // currencyMinorUnits maps each accepted ISO 4217 currency to the number of
-// decimal places in its minor unit (its exponent): 2 for USD cents, 0 for
-// currencies with no minor unit such as JPY, and 3 for currencies like KWD.
+// decimal places in its minor unit (its exponent): 2 for most currencies such
+// as USD cents, and 0 for currencies with no minor unit such as JPY.
 //
 // It is the single source of truth for converting between major and minor
 // units. Every currency in validCurrencies must have an entry here; the
