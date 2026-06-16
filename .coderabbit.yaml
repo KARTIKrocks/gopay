@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit configuration for gopay.
+# Docs: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+early_access: false
+tone_instructions: >-
+  Be concise and direct. This is a payment-processing library, so prioritize
+  correctness, security, and API stability over style nits.
+
+reviews:
+  # "assertive" gives stricter, more thorough reviews; switch to "chill" for fewer, higher-signal comments.
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  poem: true
+  review_status: true
+  collapse_walkthrough: false
+  assess_linked_issues: true
+  related_issues: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  # Files CodeRabbit should ignore (generated/vendored/lock files add noise).
+  path_filters:
+    - "!**/go.sum"
+    - "!**/go.work.sum"
+    - "!**/*.pb.go"
+    - "!**/mock.go"
+
+  # Targeted, path-scoped guidance for the reviewer.
+  path_instructions:
+    - path: "**/*.go"
+      instructions: >-
+        Follow standard Go conventions and Effective Go. Always check and handle
+        returned errors; flag ignored errors and unwrapped error returns. Ensure
+        functions that perform I/O accept and honor a context.Context. Require
+        doc comments on exported types, functions, and methods. Flag any logging,
+        printing, or error message that could leak secrets such as API keys,
+        tokens, card numbers, CVV, or full PII.
+    - path: "{payment,list,setupintent,subscription}.go"
+      instructions: >-
+        This is the core public API. Treat changes to exported types, function
+        signatures, and interfaces as potentially breaking — call out any
+        backward-incompatible change explicitly. Verify input validation on
+        amounts, currencies, and identifiers.
+    - path: "{stripe,paypal,razorpay}/*.go"
+      instructions: >-
+        Payment provider adapters. Verify HTTP clients set timeouts, response
+        bodies are closed, idempotency keys are used for charge/refund calls
+        where the provider supports them, and provider secrets are never logged.
+        Confirm error responses from the provider are mapped to gopay's error
+        types rather than swallowed.
+    - path: "**/*_test.go"
+      instructions: >-
+        Prefer table-driven tests. Check that error paths and edge cases (zero
+        amounts, invalid currencies, network failures) are covered. Tests must
+        not contain real API keys or live network calls.
+
+  tools:
+    # Reuse the repo's existing golangci-lint configuration (.golangci.yml).
+    golangci-lint:
+      enabled: true
+    # Secret scanning — important for a library that handles provider credentials.
+    gitleaks:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto

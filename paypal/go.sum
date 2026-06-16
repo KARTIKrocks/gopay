@@ -1,0 +1,4 @@
+github.com/KARTIKrocks/gopay v0.5.0 h1:ufqDVVwQ0uIh6wXURvp8d3EYLFEKt0KFz5rgsHL3Cvk=
+github.com/KARTIKrocks/gopay v0.5.0/go.mod h1:4mXl0xIxL8ebM/q0+Y0Vta49sT6O3LA6KB52FXNeW8o=
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
