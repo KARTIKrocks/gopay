@@ -62,6 +62,8 @@ func TestSubscriptionRequestValidate(t *testing.T) {
 		{"missing plan", NewSubscriptionRequest("cus_1", ""), true},
 		{"negative trial", NewSubscriptionRequest("cus_1", "plan_1").WithTrialDays(-5), true},
 		{"with trial", NewSubscriptionRequest("cus_1", "plan_1").WithTrialDays(14), false},
+		{"negative total count", NewSubscriptionRequest("cus_1", "plan_1").WithTotalCount(-1), true},
+		{"with total count", NewSubscriptionRequest("cus_1", "plan_1").WithTotalCount(12), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-25
+
+Razorpay subscriptions. The Razorpay provider now implements
+`SubscriptionProvider` (create/get plans, create/get/cancel subscriptions),
+closing the previous Stripe-only gap. All changes are additive and backward
+compatible; existing code is unaffected.
+
+### Added
+
+- **Razorpay**: implements `gopay.SubscriptionProvider` — `CreatePlan`,
+  `GetPlan`, `CreateSubscription`, `GetSubscription`, and `CancelSubscription`,
+  backed by Razorpay's Plans and Subscriptions APIs. `CancelOptions.AtPeriodEnd`
+  maps to Razorpay's `cancel_at_cycle_end`.
+- **Razorpay**: webhook normalization now covers subscription events —
+  `subscription.charged` → `WebhookInvoicePaymentSucceeded`,
+  `subscription.pending`/`halted` → `WebhookInvoicePaymentFailed`,
+  `subscription.cancelled` → `WebhookSubscriptionCanceled`,
+  `subscription.activated` → `WebhookSubscriptionCreated`, and others →
+  `WebhookSubscriptionUpdated` — with `WebhookEvent.SubscriptionID` populated.
+- **Core**: `SubscriptionRequest.TotalCount` (+ `WithTotalCount`) sets the number
+  of billing cycles for finite subscriptions. Required by Razorpay; ignored by
+  Stripe (open-ended).
+- **Core**: `Subscription.AuthURL` exposes the customer-facing mandate
+  authorization URL. Set by Razorpay (the subscription is
+  `SubscriptionStatusIncomplete` until the customer authorizes it there); empty
+  for Stripe.
+- **Core**: `SubscriptionStatusCompleted` for a finite subscription that has run
+  all of its billing cycles (Razorpay's `completed`).
+
+### Notes
+
+- Razorpay binds the customer and payment method during the `AuthURL` mandate
+  flow, so `SubscriptionRequest.CustomerID` and `PaymentMethodID` are not sent on
+  create (Razorpay's API rejects an unknown `customer_id` field); the returned
+  subscription's `CustomerID` is populated by Razorpay once authorization
+  completes. `TrialDays` delays the first charge via the subscription's start time.
+- Razorpay still does not implement `SetupIntentProvider` (no Stripe-style setup
+  intent object); those calls continue to return `ErrUnsupported`.
+
 ## [0.5.1] - 2026-06-16
 
 Quality and correctness pass triaging an automated full-repository review. All
@@ -277,6 +316,7 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.6.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.6.0
 [0.5.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.1
 [0.5.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.0
 [0.4.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.4.0

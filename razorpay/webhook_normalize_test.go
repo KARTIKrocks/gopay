@@ -9,13 +9,14 @@ import (
 func TestParseWebhookNormalized(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name          string
-		payload       string
-		wantKind      gopay.WebhookEventKind
-		wantPaymentID string
-		wantOrderID   string
-		wantRefundID  string
-		wantAmount    *gopay.Amount
+		name               string
+		payload            string
+		wantKind           gopay.WebhookEventKind
+		wantPaymentID      string
+		wantOrderID        string
+		wantRefundID       string
+		wantSubscriptionID string
+		wantAmount         *gopay.Amount
 	}{
 		{
 			name:          "payment captured",
@@ -58,6 +59,32 @@ func TestParseWebhookNormalized(t *testing.T) {
 			wantAmount:    gopay.NewAmount(1000, "INR"),
 		},
 		{
+			name:               "subscription charged carries subscription and payment",
+			payload:            `{"event":"subscription.charged","account_id":"acc_8","payload":{"subscription":{"entity":{"id":"sub_1"}},"payment":{"entity":{"id":"pay_8","amount":69900,"currency":"INR"}}}}`,
+			wantKind:           gopay.WebhookInvoicePaymentSucceeded,
+			wantPaymentID:      "pay_8",
+			wantSubscriptionID: "sub_1",
+			wantAmount:         gopay.NewAmount(69900, "INR"),
+		},
+		{
+			name:               "subscription cancelled",
+			payload:            `{"event":"subscription.cancelled","account_id":"acc_9","payload":{"subscription":{"entity":{"id":"sub_2"}}}}`,
+			wantKind:           gopay.WebhookSubscriptionCanceled,
+			wantSubscriptionID: "sub_2",
+		},
+		{
+			name:               "subscription activated",
+			payload:            `{"event":"subscription.activated","account_id":"acc_10","payload":{"subscription":{"entity":{"id":"sub_3"}}}}`,
+			wantKind:           gopay.WebhookSubscriptionCreated,
+			wantSubscriptionID: "sub_3",
+		},
+		{
+			name:               "subscription halted is payment failed",
+			payload:            `{"event":"subscription.halted","account_id":"acc_11","payload":{"subscription":{"entity":{"id":"sub_4"}}}}`,
+			wantKind:           gopay.WebhookInvoicePaymentFailed,
+			wantSubscriptionID: "sub_4",
+		},
+		{
 			name:       "unmapped event",
 			payload:    `{"event":"payment.dispute.created","account_id":"acc_4","payload":{}}`,
 			wantKind:   gopay.WebhookUnknown,
@@ -89,6 +116,9 @@ func TestParseWebhookNormalized(t *testing.T) {
 			}
 			if ev.RefundID != tt.wantRefundID {
 				t.Errorf("RefundID = %s, want %s", ev.RefundID, tt.wantRefundID)
+			}
+			if ev.SubscriptionID != tt.wantSubscriptionID {
+				t.Errorf("SubscriptionID = %s, want %s", ev.SubscriptionID, tt.wantSubscriptionID)
 			}
 			assertWebhookAmount(t, ev.Amount, tt.wantAmount)
 		})
