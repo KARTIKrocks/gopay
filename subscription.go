@@ -177,12 +177,20 @@ type SubscriptionRequest struct {
 	PlanID string
 
 	// PaymentMethodID is the payment method to charge each cycle. Optional when
-	// the customer already has a default payment method.
+	// the customer already has a default payment method. Providers that collect
+	// the mandate through a customer-facing authorization redirect (Razorpay)
+	// ignore it; see Subscription.AuthURL.
 	PaymentMethodID string
 
 	// TrialDays is the number of trial days before the first charge. Zero means
 	// no trial.
 	TrialDays int
+
+	// TotalCount is the total number of billing cycles to run before the
+	// subscription completes. Zero means "no fixed limit": providers that bill
+	// open-ended (Stripe) ignore it, while providers that require a finite cycle
+	// count (Razorpay) reject a zero value. Set it via WithTotalCount.
+	TotalCount int
 
 	// Metadata holds additional data.
 	Metadata map[string]string
@@ -210,6 +218,14 @@ func (r *SubscriptionRequest) WithPaymentMethod(paymentMethodID string) *Subscri
 // WithTrialDays sets the number of trial days before the first charge.
 func (r *SubscriptionRequest) WithTrialDays(days int) *SubscriptionRequest {
 	r.TrialDays = days
+	return r
+}
+
+// WithTotalCount sets the total number of billing cycles before the
+// subscription completes. Required by providers that only support finite
+// subscriptions (Razorpay); ignored by open-ended providers (Stripe).
+func (r *SubscriptionRequest) WithTotalCount(count int) *SubscriptionRequest {
+	r.TotalCount = count
 	return r
 }
 
@@ -242,6 +258,9 @@ func (r *SubscriptionRequest) Validate() error {
 	if r.TrialDays < 0 {
 		return errors.New("gopay: invalid trial days")
 	}
+	if r.TotalCount < 0 {
+		return errors.New("gopay: invalid total count")
+	}
 	return nil
 }
 
@@ -265,6 +284,10 @@ const (
 	SubscriptionStatusIncomplete        SubscriptionStatus = "incomplete"
 	SubscriptionStatusIncompleteExpired SubscriptionStatus = "incomplete_expired"
 	SubscriptionStatusUnpaid            SubscriptionStatus = "unpaid"
+	// SubscriptionStatusCompleted is set when a finite subscription has run all
+	// of its billing cycles successfully (e.g. Razorpay's "completed"). It is a
+	// terminal, non-failure state distinct from a cancellation.
+	SubscriptionStatusCompleted SubscriptionStatus = "completed"
 )
 
 // String returns the string representation.
@@ -300,6 +323,12 @@ type Subscription struct {
 
 	// CanceledAt is when the subscription was canceled; zero if not canceled.
 	CanceledAt time.Time
+
+	// AuthURL is a customer-facing URL the customer must visit to authorize the
+	// recurring mandate before billing begins. It is set only by providers whose
+	// subscriptions activate through a redirect/mandate flow (Razorpay); it is
+	// empty for providers that charge a pre-authorized payment method (Stripe).
+	AuthURL string
 
 	// Metadata holds additional data.
 	Metadata map[string]string

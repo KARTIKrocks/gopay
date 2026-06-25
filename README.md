@@ -46,12 +46,24 @@ go get github.com/KARTIKrocks/gopay/razorpay
 | -------- | -------- | ------- | --------- | --------------- | ------------- | ------------- | -------- | ------- |
 | Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes           | Yes      | Yes     |
 | PayPal   | Yes      | Yes     | No        | No              | No            | No            | Yes      | No      |
-| Razorpay | Yes      | Yes     | Yes       | No              | No            | No            | Yes      | Yes     |
+| Razorpay | Yes      | Yes     | Yes       | No              | No            | Yes           | Yes      | Yes     |
 
 PayPal's Orders API has no list endpoint, so listing calls return `ErrUnsupported`
-for the PayPal provider. Setup intents (save-card-without-charging) and
-subscriptions (recurring billing) are currently implemented for Stripe only;
-Razorpay and PayPal return `ErrUnsupported`.
+for the PayPal provider. Setup intents (save-card-without-charging) are currently
+implemented for Stripe only; PayPal returns `ErrUnsupported`.
+
+Subscriptions (recurring billing) are supported by Stripe and Razorpay. Razorpay's
+model differs in a few ways callers must handle: a subscription requires a finite
+number of billing cycles (set `SubscriptionRequest.TotalCount` via `WithTotalCount`),
+and it activates only after the customer authorizes the mandate at the returned
+`Subscription.AuthURL` — until then its status is `SubscriptionStatusIncomplete`.
+Because Razorpay binds the customer (and payment method) during that authorization,
+the request's `CustomerID` and `PaymentMethodID` are not sent on create; the
+returned subscription's `CustomerID` is populated by Razorpay once authorization
+completes. Recurring-billing webhooks are normalized for both providers
+(`subscription.charged` → `WebhookInvoicePaymentSucceeded`, `subscription.cancelled`
+→ `WebhookSubscriptionCanceled`, etc.), with `WebhookEvent.SubscriptionID` set.
+Stripe ignores `TotalCount` and leaves `AuthURL` empty.
 
 ## Quick Start
 

@@ -79,10 +79,19 @@ func (c Config) WithHTTPClient(client *http.Client) Config {
 	return c
 }
 
-// Provider implements gopay.Provider and gopay.CustomerProvider for Razorpay.
+// Provider implements gopay.Provider, gopay.CustomerProvider, gopay.ListProvider,
+// gopay.WebhookProvider, and gopay.SubscriptionProvider for Razorpay.
 type Provider struct {
 	config Config
 }
+
+var (
+	_ gopay.Provider             = (*Provider)(nil)
+	_ gopay.CustomerProvider     = (*Provider)(nil)
+	_ gopay.ListProvider         = (*Provider)(nil)
+	_ gopay.WebhookProvider      = (*Provider)(nil)
+	_ gopay.SubscriptionProvider = (*Provider)(nil)
+)
 
 // NewProvider creates a new Razorpay provider.
 func NewProvider(config Config) (*Provider, error) {
@@ -504,6 +513,278 @@ func (p *Provider) DeleteCustomer(ctx context.Context, customerID string) error 
 	return gopay.ErrUnsupported
 }
 
+// CreatePlan creates a recurring billing plan. Razorpay models the recurring
+// price as the plan's item; the returned plan ID is the Razorpay plan ID.
+func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gopay.Plan, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil plan request")
+	}
+	if req.Amount == nil {
+		return nil, fmt.Errorf("gopay: nil amount")
+	}
+	period, ok := intervalToPeriod(req.Interval)
+	if !ok {
+		return nil, fmt.Errorf("gopay: unsupported billing interval %q", req.Interval)
+	}
+
+	count := req.IntervalCount
+	if count <= 0 {
+		count = 1
+	}
+	name := req.Name
+	if name == "" {
+		name = "gopay plan"
+	}
+
+	reqBody := planRequest{
+		Period:   period,
+		Interval: count,
+		Item: planItem{
+			Name:     name,
+			Amount:   req.Amount.Value,
+			Currency: req.Amount.Currency,
+		},
+		Notes: req.Metadata,
+	}
+
+	respBody, err := p.doJSON(ctx, "POST", "/plans", reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var pl plan
+	if err := json.Unmarshal(respBody, &pl); err != nil {
+		return nil, err
+	}
+	return p.mapPlan(&pl), nil
+}
+
+// GetPlan retrieves a plan by ID.
+func (p *Provider) GetPlan(ctx context.Context, planID string) (*gopay.Plan, error) {
+	respBody, err := p.doJSON(ctx, "GET", "/plans/"+planID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var pl plan
+	if err := json.Unmarshal(respBody, &pl); err != nil {
+		return nil, err
+	}
+	return p.mapPlan(&pl), nil
+}
+
+// CreateSubscription subscribes a customer to a plan. Razorpay requires a finite
+// number of billing cycles (TotalCount) and activates the subscription only
+// after the customer authorizes the mandate at the returned Subscription.AuthURL;
+// until then the subscription's status is SubscriptionStatusIncomplete.
+//
+// The request's CustomerID and PaymentMethodID are not forwarded: Razorpay's
+// Subscriptions API does not accept a customer ID at creation and rejects unknown
+// fields — the customer and payment method are bound when the customer authorizes
+// the mandate at AuthURL. The created/returned subscription's CustomerID is
+// therefore populated by Razorpay only once authorization completes. TrialDays
+// delays the first charge via the subscription's start time.
+func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.SubscriptionRequest) (*gopay.Subscription, error) {
+	if req == nil {
+		return nil, fmt.Errorf("gopay: nil subscription request")
+	}
+	if req.TotalCount <= 0 {
+		return nil, fmt.Errorf("gopay: Razorpay subscriptions require a positive TotalCount (number of billing cycles)")
+	}
+
+	reqBody := subscriptionRequest{
+		PlanID:     req.PlanID,
+		TotalCount: req.TotalCount,
+		Notes:      req.Metadata,
+	}
+	if req.TrialDays > 0 {
+		reqBody.StartAt = time.Now().Add(time.Duration(req.TrialDays) * 24 * time.Hour).Unix()
+	}
+
+	respBody, err := p.doJSON(ctx, "POST", "/subscriptions", reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var sub subscription
+	if err := json.Unmarshal(respBody, &sub); err != nil {
+		return nil, err
+	}
+	return p.mapSubscription(&sub), nil
+}
+
+// GetSubscription retrieves a subscription by ID.
+func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (*gopay.Subscription, error) {
+	respBody, err := p.doJSON(ctx, "GET", "/subscriptions/"+subscriptionID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var sub subscription
+	if err := json.Unmarshal(respBody, &sub); err != nil {
+		return nil, err
+	}
+	return p.mapSubscription(&sub), nil
+}
+
+// CancelSubscription cancels a subscription. When opts.AtPeriodEnd is set the
+// cancellation is scheduled for the end of the current billing cycle; otherwise
+// it cancels immediately. A nil opts cancels immediately.
+func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string, opts *gopay.CancelOptions) (*gopay.Subscription, error) {
+	reqBody := map[string]int{"cancel_at_cycle_end": 0}
+	if opts != nil && opts.AtPeriodEnd {
+		reqBody["cancel_at_cycle_end"] = 1
+	}
+
+	respBody, err := p.doJSON(ctx, "POST", "/subscriptions/"+subscriptionID+"/cancel", reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var sub subscription
+	if err := json.Unmarshal(respBody, &sub); err != nil {
+		return nil, err
+	}
+	return p.mapSubscription(&sub), nil
+}
+
+// doJSON performs an authenticated JSON request against the Razorpay API and
+// returns the raw response body. A nil reqBody sends no payload (e.g. for GET).
+func (p *Provider) doJSON(ctx context.Context, method, path string, reqBody any) ([]byte, error) {
+	var bodyReader io.Reader
+	if reqBody != nil {
+		raw, err := json.Marshal(reqBody)
+		if err != nil {
+			return nil, err
+		}
+		bodyReader = bytes.NewReader(raw)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, method, p.config.BaseURL+path, bodyReader)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.SetBasicAuth(p.config.KeyID, p.config.KeySecret)
+	if reqBody != nil {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := p.config.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, p.parseError(respBody)
+	}
+	return respBody, nil
+}
+
+// intervalToPeriod maps a gopay billing interval to Razorpay's period value.
+func intervalToPeriod(interval gopay.BillingInterval) (string, bool) {
+	switch interval {
+	case gopay.BillingIntervalDay:
+		return "daily", true
+	case gopay.BillingIntervalWeek:
+		return "weekly", true
+	case gopay.BillingIntervalMonth:
+		return "monthly", true
+	case gopay.BillingIntervalYear:
+		return "yearly", true
+	default:
+		return "", false
+	}
+}
+
+// periodToInterval maps a Razorpay period value back to a gopay billing interval.
+func periodToInterval(period string) gopay.BillingInterval {
+	switch period {
+	case "daily":
+		return gopay.BillingIntervalDay
+	case "weekly":
+		return gopay.BillingIntervalWeek
+	case "monthly":
+		return gopay.BillingIntervalMonth
+	case "yearly":
+		return gopay.BillingIntervalYear
+	default:
+		return gopay.BillingInterval(period)
+	}
+}
+
+func (p *Provider) mapPlan(pl *plan) *gopay.Plan {
+	return &gopay.Plan{
+		ID:            pl.ID,
+		Name:          pl.Item.Name,
+		Amount:        gopay.NewAmount(pl.Item.Amount, pl.Item.Currency),
+		Interval:      periodToInterval(pl.Period),
+		IntervalCount: pl.Interval,
+		Metadata:      pl.Notes,
+		CreatedAt:     time.Unix(pl.CreatedAt, 0),
+		Provider:      p.Name(),
+		Raw: map[string]any{
+			"id":     pl.ID,
+			"period": pl.Period,
+		},
+	}
+}
+
+func (p *Provider) mapSubscription(sub *subscription) *gopay.Subscription {
+	result := &gopay.Subscription{
+		ID:         sub.ID,
+		CustomerID: sub.CustomerID,
+		PlanID:     sub.PlanID,
+		Status:     mapSubscriptionStatus(sub.Status),
+		AuthURL:    sub.ShortURL,
+		Metadata:   sub.Notes,
+		CreatedAt:  time.Unix(sub.CreatedAt, 0),
+		Provider:   p.Name(),
+		Raw: map[string]any{
+			"id":     sub.ID,
+			"status": sub.Status,
+		},
+	}
+	if sub.CurrentStart > 0 {
+		result.CurrentPeriodStart = time.Unix(sub.CurrentStart, 0)
+	}
+	if sub.CurrentEnd > 0 {
+		result.CurrentPeriodEnd = time.Unix(sub.CurrentEnd, 0)
+	}
+	if sub.Status == "cancelled" && sub.EndedAt > 0 {
+		result.CanceledAt = time.Unix(sub.EndedAt, 0)
+	}
+	return result
+}
+
+// mapSubscriptionStatus maps a Razorpay subscription status to a normalized
+// gopay subscription status.
+func mapSubscriptionStatus(status string) gopay.SubscriptionStatus {
+	switch status {
+	case "created", "authenticated":
+		// Mandate not yet authorized / first charge pending: not active yet.
+		return gopay.SubscriptionStatusIncomplete
+	case "active":
+		return gopay.SubscriptionStatusActive
+	case "pending":
+		return gopay.SubscriptionStatusPastDue
+	case "halted":
+		return gopay.SubscriptionStatusUnpaid
+	case "cancelled":
+		return gopay.SubscriptionStatusCanceled
+	case "completed":
+		return gopay.SubscriptionStatusCompleted
+	case "expired":
+		return gopay.SubscriptionStatusIncompleteExpired
+	default:
+		return gopay.SubscriptionStatusIncomplete
+	}
+}
+
 // ListPayments lists payments with pagination. Razorpay uses skip/count
 // offsets; the opaque cursor encodes the next skip offset.
 func (p *Provider) ListPayments(ctx context.Context, params *gopay.ListParams) (*gopay.List[*gopay.Payment], error) {
@@ -705,9 +986,22 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 				Currency  string `json:"currency"`
 			} `json:"entity"`
 		} `json:"refund"`
+		Subscription struct {
+			Entity struct {
+				ID string `json:"id"`
+			} `json:"entity"`
+		} `json:"subscription"`
 	}
 	if err := json.Unmarshal(event.Payload, &pl); err != nil {
 		return ev, nil // best-effort: Raw is still available to the caller
+	}
+
+	// Subscription events carry a subscription entity, and subscription.charged
+	// additionally carries the payment entity handled by the switch below. Set
+	// the subscription ID independently so it is populated even when a payment
+	// entity is also present.
+	if pl.Subscription.Entity.ID != "" {
+		ev.SubscriptionID = pl.Subscription.Entity.ID
 	}
 
 	switch {
@@ -755,6 +1049,23 @@ func mapWebhookKind(event string) gopay.WebhookEventKind {
 		return gopay.WebhookRefundFailed
 	// refund.created is classified from the refund entity's status in
 	// ParseWebhook rather than assumed successful here.
+	case "subscription.activated":
+		return gopay.WebhookSubscriptionCreated
+	case "subscription.charged":
+		// A recurring cycle was billed successfully; the payment entity carries
+		// the charged amount.
+		return gopay.WebhookInvoicePaymentSucceeded
+	case "subscription.pending", "subscription.halted":
+		// A recurring charge failed (pending = retrying, halted = retries
+		// exhausted).
+		return gopay.WebhookInvoicePaymentFailed
+	case "subscription.cancelled":
+		return gopay.WebhookSubscriptionCanceled
+	case "subscription.authenticated", "subscription.updated",
+		"subscription.paused", "subscription.resumed", "subscription.completed":
+		// Non-terminal (or naturally terminal, for completed) state changes that
+		// don't map to a more specific kind.
+		return gopay.WebhookSubscriptionUpdated
 	default:
 		return gopay.WebhookUnknown
 	}
@@ -966,4 +1277,50 @@ type customer struct {
 	Contact   string            `json:"contact"`
 	Notes     map[string]string `json:"notes"`
 	CreatedAt int64             `json:"created_at"`
+}
+
+type planItem struct {
+	Name     string `json:"name"`
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+type planRequest struct {
+	Period   string            `json:"period"`
+	Interval int               `json:"interval"`
+	Item     planItem          `json:"item"`
+	Notes    map[string]string `json:"notes,omitempty"`
+}
+
+type plan struct {
+	ID       string `json:"id"`
+	Period   string `json:"period"`
+	Interval int    `json:"interval"`
+	Item     struct {
+		Name     string `json:"name"`
+		Amount   int64  `json:"amount"`
+		Currency string `json:"currency"`
+	} `json:"item"`
+	Notes     map[string]string `json:"notes"`
+	CreatedAt int64             `json:"created_at"`
+}
+
+type subscriptionRequest struct {
+	PlanID     string            `json:"plan_id"`
+	TotalCount int               `json:"total_count"`
+	StartAt    int64             `json:"start_at,omitempty"`
+	Notes      map[string]string `json:"notes,omitempty"`
+}
+
+type subscription struct {
+	ID           string            `json:"id"`
+	PlanID       string            `json:"plan_id"`
+	CustomerID   string            `json:"customer_id"`
+	Status       string            `json:"status"`
+	CurrentStart int64             `json:"current_start"`
+	CurrentEnd   int64             `json:"current_end"`
+	EndedAt      int64             `json:"ended_at"`
+	ShortURL     string            `json:"short_url"`
+	Notes        map[string]string `json:"notes"`
+	CreatedAt    int64             `json:"created_at"`
 }
