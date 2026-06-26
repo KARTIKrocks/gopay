@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -94,11 +95,26 @@ func fromDecimal(s string, currency string) (int64, error) {
 			}
 		}
 	}
-	result := whole*100 + frac
-	if whole < 0 {
-		result = whole*100 - frac
+	// Guard against int64 overflow before scaling to minor units. Real PayPal
+	// amounts never approach this, but a malformed payload must error rather
+	// than silently wrap. Check the *100 scale and the subsequent ±frac
+	// separately so the residual fraction can't push a near-limit value over.
+	if whole > math.MaxInt64/100 || whole < math.MinInt64/100 {
+		return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
 	}
-	return result, nil
+	base := whole * 100
+	// Derive the sign from the string, not from `whole`: a value like "-0.99"
+	// parses to whole == 0, which would otherwise lose the negative sign.
+	if strings.HasPrefix(strings.TrimSpace(s), "-") {
+		if base < math.MinInt64+frac {
+			return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
+		}
+		return base - frac, nil
+	}
+	if base > math.MaxInt64-frac {
+		return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
+	}
+	return base + frac, nil
 }
 
 // maxResponseSize is the maximum response body size (10 MB).
@@ -631,11 +647,40 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 	return p.mapRefund(&refundResp, "")
 }
 
+// headerValue looks up an HTTP header value case-insensitively. HTTP header
+// names are case-insensitive and net/http canonicalizes them (e.g.
+// "Paypal-Auth-Algo"), so a caller-supplied map may key them in any casing; a
+// plain map lookup against a fixed-case literal would miss them and silently
+// send empty verification fields.
+func headerValue(headers map[string]string, name string) string {
+	if v, ok := headers[name]; ok {
+		return v
+	}
+	for k, v := range headers {
+		if strings.EqualFold(k, name) {
+			return v
+		}
+	}
+	return ""
+}
+
 // VerifyWebhook verifies and parses a PayPal webhook event.
 // Headers should contain PayPal webhook headers for verification.
 func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers map[string]string) (*gopay.WebhookEvent, error) {
 	if p.config.WebhookID == "" {
 		return nil, fmt.Errorf("%w: webhook ID not configured", gopay.ErrInvalidConfig)
+	}
+
+	// Validate the required transmission headers up front so a missing one
+	// fails locally instead of fetching a token and sending an empty-field
+	// verification request that PayPal would reject after a round-trip.
+	authAlgo := headerValue(headers, "PAYPAL-AUTH-ALGO")
+	certURL := headerValue(headers, "PAYPAL-CERT-URL")
+	transmissionID := headerValue(headers, "PAYPAL-TRANSMISSION-ID")
+	transmissionSig := headerValue(headers, "PAYPAL-TRANSMISSION-SIG")
+	transmissionTime := headerValue(headers, "PAYPAL-TRANSMISSION-TIME")
+	if authAlgo == "" || certURL == "" || transmissionID == "" || transmissionSig == "" || transmissionTime == "" {
+		return nil, fmt.Errorf("%w: missing required PayPal webhook headers", gopay.ErrProviderError)
 	}
 
 	token, err := p.getAccessToken(ctx)
@@ -644,11 +689,11 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 	}
 
 	verifyReq := map[string]any{
-		"auth_algo":         headers["PAYPAL-AUTH-ALGO"],
-		"cert_url":          headers["PAYPAL-CERT-URL"],
-		"transmission_id":   headers["PAYPAL-TRANSMISSION-ID"],
-		"transmission_sig":  headers["PAYPAL-TRANSMISSION-SIG"],
-		"transmission_time": headers["PAYPAL-TRANSMISSION-TIME"],
+		"auth_algo":         authAlgo,
+		"cert_url":          certURL,
+		"transmission_id":   transmissionID,
+		"transmission_sig":  transmissionSig,
+		"transmission_time": transmissionTime,
 		"webhook_id":        p.config.WebhookID,
 		"webhook_event":     json.RawMessage(payload),
 	}
