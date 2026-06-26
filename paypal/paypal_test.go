@@ -775,6 +775,7 @@ func TestVerifyWebhookMissingConfig(t *testing.T) {
 // canonicalizes them (e.g. "Paypal-Transmission-Id"), so a caller-supplied map
 // keyed in canonical casing must still resolve to the verify request.
 func TestVerifyWebhookHeaderCasing(t *testing.T) {
+	const transmissionID = "txn-123"
 	var forwarded map[string]any
 
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
@@ -795,7 +796,7 @@ func TestVerifyWebhookHeaderCasing(t *testing.T) {
 	headers := map[string]string{
 		"Paypal-Auth-Algo":         "SHA256withRSA",
 		"Paypal-Cert-Url":          "https://example.com/cert",
-		"Paypal-Transmission-Id":   "txn-123",
+		"Paypal-Transmission-Id":   transmissionID,
 		"Paypal-Transmission-Sig":  "sig",
 		"Paypal-Transmission-Time": "2023-11-14T22:13:20Z",
 	}
@@ -811,14 +812,13 @@ func TestVerifyWebhookHeaderCasing(t *testing.T) {
 
 	// Every header the casing fix touches must be forwarded, so a regression in
 	// any single lookup (not just transmission_id) is caught.
-	wantForwarded := map[string]string{
+	for field, want := range map[string]string{
 		"auth_algo":         "SHA256withRSA",
 		"cert_url":          "https://example.com/cert",
-		"transmission_id":   "txn-123",
+		"transmission_id":   transmissionID,
 		"transmission_sig":  "sig",
 		"transmission_time": "2023-11-14T22:13:20Z",
-	}
-	for field, want := range wantForwarded {
+	} {
 		if got := forwarded[field]; got != want {
 			t.Errorf("forwarded %s = %v, want %q", field, got, want)
 		}
