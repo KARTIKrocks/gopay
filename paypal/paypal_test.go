@@ -775,7 +775,6 @@ func TestVerifyWebhookMissingConfig(t *testing.T) {
 // canonicalizes them (e.g. "Paypal-Transmission-Id"), so a caller-supplied map
 // keyed in canonical casing must still resolve to the verify request.
 func TestVerifyWebhookHeaderCasing(t *testing.T) {
-	const transmissionID = "txn-123"
 	var forwarded map[string]any
 
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
@@ -796,7 +795,7 @@ func TestVerifyWebhookHeaderCasing(t *testing.T) {
 	headers := map[string]string{
 		"Paypal-Auth-Algo":         "SHA256withRSA",
 		"Paypal-Cert-Url":          "https://example.com/cert",
-		"Paypal-Transmission-Id":   transmissionID,
+		"Paypal-Transmission-Id":   "txn-123",
 		"Paypal-Transmission-Sig":  "sig",
 		"Paypal-Transmission-Time": "2023-11-14T22:13:20Z",
 	}
@@ -809,8 +808,63 @@ func TestVerifyWebhookHeaderCasing(t *testing.T) {
 	if ev.Type != "PAYMENT.CAPTURE.COMPLETED" {
 		t.Errorf("Type = %q, want PAYMENT.CAPTURE.COMPLETED", ev.Type)
 	}
-	if got := forwarded["transmission_id"]; got != transmissionID {
-		t.Errorf("forwarded transmission_id = %v, want %q", got, transmissionID)
+
+	// Every header the casing fix touches must be forwarded, so a regression in
+	// any single lookup (not just transmission_id) is caught.
+	wantForwarded := map[string]string{
+		"auth_algo":         "SHA256withRSA",
+		"cert_url":          "https://example.com/cert",
+		"transmission_id":   "txn-123",
+		"transmission_sig":  "sig",
+		"transmission_time": "2023-11-14T22:13:20Z",
+	}
+	for field, want := range wantForwarded {
+		if got := forwarded[field]; got != want {
+			t.Errorf("forwarded %s = %v, want %q", field, got, want)
+		}
+	}
+}
+
+// TestVerifyWebhookMissingHeaders ensures a missing required transmission header
+// fails locally with ErrProviderError instead of calling out to PayPal.
+func TestVerifyWebhookMissingHeaders(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/notifications/verify-webhook-signature" {
+			t.Errorf("verification endpoint should not be called with missing headers")
+		}
+	})
+	p.config.WebhookID = "WH-TEST"
+
+	// Complete set minus PAYPAL-TRANSMISSION-SIG.
+	headers := map[string]string{
+		"Paypal-Auth-Algo":         "SHA256withRSA",
+		"Paypal-Cert-Url":          "https://example.com/cert",
+		"Paypal-Transmission-Id":   "txn-123",
+		"Paypal-Transmission-Time": "2023-11-14T22:13:20Z",
+	}
+
+	_, err := p.VerifyWebhook(context.Background(), []byte(`{}`), headers)
+	if !errors.Is(err, gopay.ErrProviderError) {
+		t.Errorf("expected ErrProviderError, got %v", err)
+	}
+}
+
+// TestFromDecimalOverflow ensures an amount that would overflow int64 when
+// scaled to minor units errors instead of silently wrapping.
+func TestFromDecimalOverflow(t *testing.T) {
+	cases := []string{
+		// One above math.MaxInt64/100 (92233720368547758): overflows on *100.
+		"92233720368547759.00",
+		// At the *100 limit but the fraction pushes base+frac past MaxInt64.
+		"92233720368547758.99",
+		// Symmetric underflow on the negative path.
+		"-92233720368547759.00",
+		"-92233720368547758.99",
+	}
+	for _, c := range cases {
+		if _, err := fromDecimal(c, "USD"); err == nil {
+			t.Errorf("fromDecimal(%q): expected overflow error, got nil", c)
+		}
 	}
 }
 

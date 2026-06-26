@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -94,13 +95,26 @@ func fromDecimal(s string, currency string) (int64, error) {
 			}
 		}
 	}
+	// Guard against int64 overflow before scaling to minor units. Real PayPal
+	// amounts never approach this, but a malformed payload must error rather
+	// than silently wrap. Check the *100 scale and the subsequent ±frac
+	// separately so the residual fraction can't push a near-limit value over.
+	if whole > math.MaxInt64/100 || whole < math.MinInt64/100 {
+		return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
+	}
+	base := whole * 100
 	// Derive the sign from the string, not from `whole`: a value like "-0.99"
 	// parses to whole == 0, which would otherwise lose the negative sign.
-	result := whole*100 + frac
 	if strings.HasPrefix(strings.TrimSpace(s), "-") {
-		result = whole*100 - frac
+		if base < math.MinInt64+frac {
+			return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
+		}
+		return base - frac, nil
 	}
-	return result, nil
+	if base > math.MaxInt64-frac {
+		return 0, fmt.Errorf("amount %q overflows minor-unit representation", s)
+	}
+	return base + frac, nil
 }
 
 // maxResponseSize is the maximum response body size (10 MB).
@@ -657,17 +671,29 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 		return nil, fmt.Errorf("%w: webhook ID not configured", gopay.ErrInvalidConfig)
 	}
 
+	// Validate the required transmission headers up front so a missing one
+	// fails locally instead of fetching a token and sending an empty-field
+	// verification request that PayPal would reject after a round-trip.
+	authAlgo := headerValue(headers, "PAYPAL-AUTH-ALGO")
+	certURL := headerValue(headers, "PAYPAL-CERT-URL")
+	transmissionID := headerValue(headers, "PAYPAL-TRANSMISSION-ID")
+	transmissionSig := headerValue(headers, "PAYPAL-TRANSMISSION-SIG")
+	transmissionTime := headerValue(headers, "PAYPAL-TRANSMISSION-TIME")
+	if authAlgo == "" || certURL == "" || transmissionID == "" || transmissionSig == "" || transmissionTime == "" {
+		return nil, fmt.Errorf("%w: missing required PayPal webhook headers", gopay.ErrProviderError)
+	}
+
 	token, err := p.getAccessToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	verifyReq := map[string]any{
-		"auth_algo":         headerValue(headers, "PAYPAL-AUTH-ALGO"),
-		"cert_url":          headerValue(headers, "PAYPAL-CERT-URL"),
-		"transmission_id":   headerValue(headers, "PAYPAL-TRANSMISSION-ID"),
-		"transmission_sig":  headerValue(headers, "PAYPAL-TRANSMISSION-SIG"),
-		"transmission_time": headerValue(headers, "PAYPAL-TRANSMISSION-TIME"),
+		"auth_algo":         authAlgo,
+		"cert_url":          certURL,
+		"transmission_id":   transmissionID,
+		"transmission_sig":  transmissionSig,
+		"transmission_time": transmissionTime,
 		"webhook_id":        p.config.WebhookID,
 		"webhook_event":     json.RawMessage(payload),
 	}
