@@ -2,6 +2,6 @@ module github.com/KARTIKrocks/gopay/paypal
 
 go 1.24
 
-require github.com/KARTIKrocks/gopay v0.6.0
+require github.com/KARTIKrocks/gopay v0.6.1
 
 require github.com/google/uuid v1.6.0 // indirect
