@@ -964,10 +964,11 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 	var pl struct {
 		Payment struct {
 			Entity struct {
-				ID       string `json:"id"`
-				OrderID  string `json:"order_id"`
-				Amount   int64  `json:"amount"`
-				Currency string `json:"currency"`
+				ID        string `json:"id"`
+				OrderID   string `json:"order_id"`
+				InvoiceID string `json:"invoice_id"`
+				Amount    int64  `json:"amount"`
+				Currency  string `json:"currency"`
 			} `json:"entity"`
 		} `json:"payment"`
 		Order struct {
@@ -1022,6 +1023,9 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 	case pl.Payment.Entity.ID != "":
 		ev.PaymentID = pl.Payment.Entity.ID
 		ev.OrderID = pl.Payment.Entity.OrderID
+		// subscription.charged carries the billed invoice on the payment entity;
+		// surface it so InvoiceID is populated like it is for Stripe.
+		ev.InvoiceID = pl.Payment.Entity.InvoiceID
 		if pl.Payment.Entity.Currency != "" {
 			ev.Amount = gopay.NewAmount(pl.Payment.Entity.Amount, pl.Payment.Entity.Currency)
 		}

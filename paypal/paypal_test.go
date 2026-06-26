@@ -137,6 +137,10 @@ func TestFromDecimal(t *testing.T) {
 		// Negative amounts
 		{"-1.00", "USD", -100},
 		{"-19.99", "USD", -1999},
+		// Negative amounts with a zero whole part must keep their sign.
+		{"-0.99", "USD", -99},
+		{"-0.50", "USD", -50},
+		{"-0.01", "USD", -1},
 		// Edge cases
 		{"0", "USD", 0},
 		{"5.", "USD", 500},
@@ -763,6 +767,50 @@ func TestVerifyWebhookMissingConfig(t *testing.T) {
 	_, err := p.VerifyWebhook(context.Background(), []byte(`{}`), map[string]string{})
 	if !errors.Is(err, gopay.ErrInvalidConfig) {
 		t.Errorf("expected ErrInvalidConfig, got %v", err)
+	}
+}
+
+// TestVerifyWebhookHeaderCasing ensures the verification headers are read
+// case-insensitively. HTTP header names are case-insensitive and net/http
+// canonicalizes them (e.g. "Paypal-Transmission-Id"), so a caller-supplied map
+// keyed in canonical casing must still resolve to the verify request.
+func TestVerifyWebhookHeaderCasing(t *testing.T) {
+	const transmissionID = "txn-123"
+	var forwarded map[string]any
+
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/notifications/verify-webhook-signature" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(500)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&forwarded); err != nil {
+			t.Errorf("decode verify request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"verification_status":"SUCCESS"}`))
+	})
+	p.config.WebhookID = "WH-TEST"
+
+	// Canonical (net/http) casing, not the all-caps literals the code uses.
+	headers := map[string]string{
+		"Paypal-Auth-Algo":         "SHA256withRSA",
+		"Paypal-Cert-Url":          "https://example.com/cert",
+		"Paypal-Transmission-Id":   transmissionID,
+		"Paypal-Transmission-Sig":  "sig",
+		"Paypal-Transmission-Time": "2023-11-14T22:13:20Z",
+	}
+	payload := []byte(`{"id":"EVT-1","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"id":"CAP-1"}}`)
+
+	ev, err := p.VerifyWebhook(context.Background(), payload, headers)
+	if err != nil {
+		t.Fatalf("VerifyWebhook: %v", err)
+	}
+	if ev.Type != "PAYMENT.CAPTURE.COMPLETED" {
+		t.Errorf("Type = %q, want PAYMENT.CAPTURE.COMPLETED", ev.Type)
+	}
+	if got := forwarded["transmission_id"]; got != transmissionID {
+		t.Errorf("forwarded transmission_id = %v, want %q", got, transmissionID)
 	}
 }
 

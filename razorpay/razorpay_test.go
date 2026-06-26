@@ -477,6 +477,34 @@ func TestParseWebhook(t *testing.T) {
 	}
 }
 
+func TestParseWebhookSubscriptionCharged(t *testing.T) {
+	// subscription.charged carries the billed invoice on the payment entity;
+	// the parser should surface SubscriptionID and InvoiceID alongside the payment.
+	payload := []byte(`{"event":"subscription.charged","account_id":"acc_789","payload":{` +
+		`"subscription":{"entity":{"id":"sub_789"}},` +
+		`"payment":{"entity":{"id":"pay_789","invoice_id":"inv_789","amount":1999,"currency":"INR"}}}}`)
+
+	event, err := ParseWebhook(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event.Kind != gopay.WebhookInvoicePaymentSucceeded {
+		t.Errorf("Kind = %s, want %s", event.Kind, gopay.WebhookInvoicePaymentSucceeded)
+	}
+	if event.SubscriptionID != "sub_789" {
+		t.Errorf("SubscriptionID = %s, want sub_789", event.SubscriptionID)
+	}
+	if event.InvoiceID != "inv_789" {
+		t.Errorf("InvoiceID = %s, want inv_789", event.InvoiceID)
+	}
+	if event.PaymentID != "pay_789" {
+		t.Errorf("PaymentID = %s, want pay_789", event.PaymentID)
+	}
+	if event.Amount == nil || event.Amount.Value != 1999 {
+		t.Errorf("Amount = %v, want 1999", event.Amount)
+	}
+}
+
 // --- HTTP-level tests using httptest ---
 
 func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {

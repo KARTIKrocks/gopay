@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-26
+
+Bug-fix release for the PayPal and Razorpay providers. Core and Stripe are
+unchanged. All changes are backward compatible.
+
+### Fixed
+
+- **PayPal**: webhook signature verification now reads the `PAYPAL-*`
+  transmission headers case-insensitively, so verification no longer silently
+  fails when net/http canonicalizes the incoming header names.
+- **PayPal**: `fromDecimal` no longer drops the sign for amounts with a zero
+  whole part (e.g. `-0.99` was parsed as `99`).
+- **Razorpay**: `WebhookEvent.InvoiceID` is now populated from
+  `subscription.charged` (read from the payment entity's `invoice_id`), matching
+  Stripe's behavior so the same normalized event kind carries an invoice
+  identifier across providers.
+
 ## [0.6.0] - 2026-06-25
 
 Razorpay subscriptions. The Razorpay provider now implements
