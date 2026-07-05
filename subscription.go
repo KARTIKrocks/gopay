@@ -170,7 +170,11 @@ type Plan struct {
 
 // SubscriptionRequest represents a subscription-creation request.
 type SubscriptionRequest struct {
-	// CustomerID is the customer to subscribe.
+	// CustomerID is the customer to subscribe. Whether it is required is
+	// provider-dependent: providers that charge a stored payment method (Stripe)
+	// require it, while providers that create the customer during a
+	// customer-facing mandate-authorization redirect (Razorpay) ignore it. Each
+	// provider enforces its own requirement; core validation does not.
 	CustomerID string
 
 	// PlanID is the plan to subscribe the customer to.
@@ -249,9 +253,9 @@ func (r *SubscriptionRequest) Validate() error {
 	if r == nil {
 		return errors.New("gopay: nil subscription request")
 	}
-	if r.CustomerID == "" {
-		return errors.New("gopay: customer ID required for subscription")
-	}
+	// CustomerID is intentionally not required here: whether it is needed is
+	// provider-dependent (see the field doc). Providers that require it enforce
+	// that in their own CreateSubscription.
 	if r.PlanID == "" {
 		return errors.New("gopay: plan ID required for subscription")
 	}

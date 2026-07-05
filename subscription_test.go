@@ -58,7 +58,9 @@ func TestSubscriptionRequestValidate(t *testing.T) {
 	}{
 		{"nil", nil, true},
 		{"valid", NewSubscriptionRequest("cus_1", "plan_1"), false},
-		{"missing customer", NewSubscriptionRequest("", "plan_1"), true},
+		// CustomerID is provider-enforced, not required by core validation:
+		// mandate-redirect providers (Razorpay) create the customer during auth.
+		{"missing customer is allowed by core", NewSubscriptionRequest("", "plan_1"), false},
 		{"missing plan", NewSubscriptionRequest("cus_1", ""), true},
 		{"negative trial", NewSubscriptionRequest("cus_1", "plan_1").WithTrialDays(-5), true},
 		{"with trial", NewSubscriptionRequest("cus_1", "plan_1").WithTrialDays(14), false},

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-05
+
+Subscription customer-id handling is now provider-aware. This unblocks
+redirect-mandate subscription flows (Razorpay) that create the customer during
+authorization and therefore never take a caller-supplied customer id.
+
+### Changed
+
+- **Core**: `SubscriptionRequest.Validate` no longer requires `CustomerID`.
+  Whether a customer id is needed is provider-dependent, so each provider now
+  enforces its own requirement (mirroring how `PaymentMethodID` is already
+  treated). Callers that relied on `Validate` rejecting an empty `CustomerID`
+  should note the check now happens in the provider's `CreateSubscription`.
+- **Stripe**: `CreateSubscription` now returns an error when `CustomerID` is
+  empty (Stripe subscriptions charge a stored payment method on an existing
+  customer), preserving the previous end-to-end behavior for Stripe callers.
+- **Razorpay**: subscriptions no longer need a placeholder `CustomerID` — the
+  customer is created during the mandate-authorization redirect, so the field is
+  ignored as documented.
+
 ## [0.6.1] - 2026-06-26
 
 Bug-fix release for the PayPal and Razorpay providers. Core and Stripe are
