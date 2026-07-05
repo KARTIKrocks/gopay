@@ -518,6 +518,12 @@ func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.Subscripti
 	if req == nil {
 		return nil, fmt.Errorf("gopay: nil subscription request")
 	}
+	// Stripe subscriptions charge a stored payment method on an existing
+	// customer, so CustomerID is required here (core validation leaves this to
+	// the provider, since mandate-redirect providers like Razorpay don't need it).
+	if req.CustomerID == "" {
+		return nil, errors.New("gopay: customer ID required for Stripe subscription")
+	}
 
 	params := &stripe.SubscriptionParams{
 		Customer: stripe.String(req.CustomerID),

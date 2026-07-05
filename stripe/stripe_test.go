@@ -25,6 +25,19 @@ func TestNewProviderValidation(t *testing.T) {
 	}
 }
 
+func TestCreateSubscriptionRequiresCustomer(t *testing.T) {
+	p, err := NewProvider(Config{SecretKey: "sk_test_123"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Stripe enforces CustomerID itself now that core validation no longer does.
+	// The guard returns before any API call, so no backend is needed.
+	_, err = p.CreateSubscription(context.Background(), gopay.NewSubscriptionRequest("", "plan_1"))
+	if err == nil {
+		t.Fatal("expected error for empty customer ID, got nil")
+	}
+}
+
 func TestConfigBuilders(t *testing.T) {
 	cfg := DefaultConfig().
 		WithSecretKey("sk_test_123").
