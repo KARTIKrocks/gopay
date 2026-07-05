@@ -567,6 +567,73 @@ func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (
 	return p.mapSubscription(sub), nil
 }
 
+// GetInvoice retrieves an invoice by ID.
+func (p *Provider) GetInvoice(ctx context.Context, invoiceID string) (*gopay.Invoice, error) {
+	params := &stripe.InvoiceParams{}
+	params.Context = ctx
+	inv, err := p.api.Invoices.Get(invoiceID, params)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return p.mapInvoice(inv), nil
+}
+
+// mapInvoice converts a Stripe invoice to a gopay Invoice.
+func (p *Provider) mapInvoice(inv *stripe.Invoice) *gopay.Invoice {
+	out := &gopay.Invoice{
+		ID:               inv.ID,
+		Status:           mapInvoiceStatus(inv.Status),
+		Number:           inv.Number,
+		HostedInvoiceURL: inv.HostedInvoiceURL,
+		PDFURL:           inv.InvoicePDF,
+		Metadata:         inv.Metadata,
+		CreatedAt:        time.Unix(inv.Created, 0),
+		Provider:         p.Name(),
+		Raw: map[string]any{
+			"id":     inv.ID,
+			"status": string(inv.Status),
+		},
+	}
+
+	if inv.Currency != "" {
+		out.Amount = gopay.NewAmount(inv.AmountDue, string(inv.Currency))
+		out.AmountPaid = gopay.NewAmount(inv.AmountPaid, string(inv.Currency))
+	}
+	if inv.Customer != nil {
+		out.CustomerID = inv.Customer.ID
+	}
+	if inv.Subscription != nil {
+		out.SubscriptionID = inv.Subscription.ID
+	}
+	if inv.DueDate > 0 {
+		out.DueDate = time.Unix(inv.DueDate, 0)
+	}
+	if inv.StatusTransitions != nil && inv.StatusTransitions.PaidAt > 0 {
+		out.PaidAt = time.Unix(inv.StatusTransitions.PaidAt, 0)
+	}
+
+	return out
+}
+
+// mapInvoiceStatus maps a Stripe invoice status to a normalized invoice status.
+func mapInvoiceStatus(s stripe.InvoiceStatus) gopay.InvoiceStatus {
+	switch s {
+	case stripe.InvoiceStatusDraft:
+		return gopay.InvoiceStatusDraft
+	case stripe.InvoiceStatusOpen:
+		return gopay.InvoiceStatusOpen
+	case stripe.InvoiceStatusPaid:
+		return gopay.InvoiceStatusPaid
+	case stripe.InvoiceStatusVoid:
+		return gopay.InvoiceStatusVoid
+	case stripe.InvoiceStatusUncollectible:
+		return gopay.InvoiceStatusUncollectible
+	default:
+		return gopay.InvoiceStatus(s)
+	}
+}
+
 // CancelSubscription cancels a subscription. When opts.AtPeriodEnd is set the
 // subscription is updated to cancel at period end; otherwise it is canceled
 // immediately.

@@ -640,6 +640,45 @@ func TestGetPaymentNotFoundHTTP(t *testing.T) {
 	}
 }
 
+func TestGetInvoiceHTTP(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/invoices/inv_001" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"id":"inv_001","invoice_number":"INV-1","customer_id":"cust_1","subscription_id":"sub_1","status":"paid","amount":5000,"amount_paid":5000,"currency":"INR","short_url":"https://rzp.io/i/abc","date":1700000000,"paid_at":1700050000,"notes":{"k":"v"}}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
+	})
+
+	inv, err := p.GetInvoice(context.Background(), "inv_001")
+	if err != nil {
+		t.Fatalf("GetInvoice: %v", err)
+	}
+	if inv.ID != "inv_001" {
+		t.Errorf("ID = %s, want inv_001", inv.ID)
+	}
+	if inv.Status != gopay.InvoiceStatusPaid {
+		t.Errorf("Status = %s, want paid", inv.Status)
+	}
+	if inv.SubscriptionID != "sub_1" {
+		t.Errorf("SubscriptionID = %s, want sub_1", inv.SubscriptionID)
+	}
+	if inv.HostedInvoiceURL != "https://rzp.io/i/abc" {
+		t.Errorf("HostedInvoiceURL = %s, want https://rzp.io/i/abc", inv.HostedInvoiceURL)
+	}
+	if inv.Amount == nil || inv.Amount.Value != 5000 {
+		t.Errorf("Amount = %v, want 5000", inv.Amount)
+	}
+	if inv.Number != "INV-1" {
+		t.Errorf("Number = %s, want INV-1", inv.Number)
+	}
+	if !inv.IsPaid() {
+		t.Error("IsPaid() = false, want true")
+	}
+}
+
 func TestCapturePaymentHTTP(t *testing.T) {
 	callCount := 0
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {

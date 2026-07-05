@@ -627,6 +627,74 @@ func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (
 	return p.mapSubscription(&sub), nil
 }
 
+// GetInvoice retrieves an invoice by ID.
+func (p *Provider) GetInvoice(ctx context.Context, invoiceID string) (*gopay.Invoice, error) {
+	respBody, err := p.doJSON(ctx, "GET", "/invoices/"+invoiceID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var inv invoice
+	if err := json.Unmarshal(respBody, &inv); err != nil {
+		return nil, err
+	}
+	return p.mapInvoice(&inv), nil
+}
+
+// mapInvoice converts a Razorpay invoice entity to a gopay Invoice.
+func (p *Provider) mapInvoice(inv *invoice) *gopay.Invoice {
+	result := &gopay.Invoice{
+		ID:               inv.ID,
+		Status:           mapInvoiceStatus(inv.Status),
+		SubscriptionID:   inv.SubscriptionID,
+		CustomerID:       inv.CustomerID,
+		Number:           inv.InvoiceNumber,
+		HostedInvoiceURL: inv.ShortURL,
+		Metadata:         inv.Notes,
+		Provider:         p.Name(),
+		Raw: map[string]any{
+			"id":     inv.ID,
+			"status": inv.Status,
+		},
+	}
+	if inv.Currency != "" {
+		result.Amount = gopay.NewAmount(inv.Amount, inv.Currency)
+		result.AmountPaid = gopay.NewAmount(inv.AmountPaid, inv.Currency)
+	}
+	// Razorpay reports issuance time as `date`; fall back to it when the entity
+	// omits a separate created_at.
+	created := inv.CreatedAt
+	if created == 0 {
+		created = inv.Date
+	}
+	if created > 0 {
+		result.CreatedAt = time.Unix(created, 0)
+	}
+	if inv.ExpireBy > 0 {
+		result.DueDate = time.Unix(inv.ExpireBy, 0)
+	}
+	if inv.PaidAt > 0 {
+		result.PaidAt = time.Unix(inv.PaidAt, 0)
+	}
+	return result
+}
+
+// mapInvoiceStatus maps a Razorpay invoice status to a normalized invoice status.
+func mapInvoiceStatus(status string) gopay.InvoiceStatus {
+	switch status {
+	case "draft":
+		return gopay.InvoiceStatusDraft
+	case "issued", "partially_paid":
+		return gopay.InvoiceStatusOpen
+	case "paid":
+		return gopay.InvoiceStatusPaid
+	case "cancelled", "expired", "deleted":
+		return gopay.InvoiceStatusVoid
+	default:
+		return gopay.InvoiceStatus(status)
+	}
+}
+
 // CancelSubscription cancels a subscription. When opts.AtPeriodEnd is set the
 // cancellation is scheduled for the end of the current billing cycle; otherwise
 // it cancels immediately. A nil opts cancels immediately.
@@ -1327,4 +1395,21 @@ type subscription struct {
 	ShortURL     string            `json:"short_url"`
 	Notes        map[string]string `json:"notes"`
 	CreatedAt    int64             `json:"created_at"`
+}
+
+type invoice struct {
+	ID             string            `json:"id"`
+	InvoiceNumber  string            `json:"invoice_number"`
+	CustomerID     string            `json:"customer_id"`
+	SubscriptionID string            `json:"subscription_id"`
+	Status         string            `json:"status"`
+	Amount         int64             `json:"amount"`
+	AmountPaid     int64             `json:"amount_paid"`
+	Currency       string            `json:"currency"`
+	ShortURL       string            `json:"short_url"`
+	Date           int64             `json:"date"`
+	PaidAt         int64             `json:"paid_at"`
+	ExpireBy       int64             `json:"expire_by"`
+	CreatedAt      int64             `json:"created_at"`
+	Notes          map[string]string `json:"notes"`
 }

@@ -1015,6 +1015,22 @@ func (c *Client) CancelSetupIntent(ctx context.Context, setupIntentID string) (*
 	return si, nil
 }
 
+// GetInvoice retrieves an invoice by ID (if supported).
+func (c *Client) GetInvoice(ctx context.Context, invoiceID string) (*Invoice, error) {
+	if invoiceID == "" {
+		return nil, ErrNotFound
+	}
+	ip, ok := c.provider.(InvoiceProvider)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	inv, err := ip.GetInvoice(ctx, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("get invoice: %w", err)
+	}
+	return inv, nil
+}
+
 // CreatePlan creates a recurring plan (if supported).
 func (c *Client) CreatePlan(ctx context.Context, req *PlanRequest) (*Plan, error) {
 	if err := req.Validate(); err != nil {

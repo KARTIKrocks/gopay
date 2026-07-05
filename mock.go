@@ -21,6 +21,7 @@ type MockProvider struct {
 	setupIntents   map[string]*SetupIntent
 	plans          map[string]*Plan
 	subscriptions  map[string]*Subscription
+	invoices       map[string]*Invoice
 	createError    error
 	captureError   error
 	refundError    error
@@ -41,6 +42,7 @@ func NewMockProvider() *MockProvider {
 		setupIntents:   make(map[string]*SetupIntent),
 		plans:          make(map[string]*Plan),
 		subscriptions:  make(map[string]*Subscription),
+		invoices:       make(map[string]*Invoice),
 		autoCapture:    true,
 		autoSucceed:    true,
 	}
@@ -450,6 +452,28 @@ func (p *MockProvider) CancelSetupIntent(_ context.Context, setupIntentID string
 
 	si.Status = SetupIntentStatusCanceled
 	return si, nil
+}
+
+// AddInvoice seeds an invoice so GetInvoice can return it. It exists because the
+// mock has no invoice-creation flow; tests use it to stage retrievable invoices.
+func (p *MockProvider) AddInvoice(inv *Invoice) *MockProvider {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.invoices[inv.ID] = inv
+	return p
+}
+
+// GetInvoice retrieves a seeded mock invoice.
+func (p *MockProvider) GetInvoice(_ context.Context, invoiceID string) (*Invoice, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	inv, ok := p.invoices[invoiceID]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return inv, nil
 }
 
 // CreatePlan creates a mock plan.
@@ -891,6 +915,7 @@ func (p *MockProvider) Reset() {
 	p.setupIntents = make(map[string]*SetupIntent)
 	p.plans = make(map[string]*Plan)
 	p.subscriptions = make(map[string]*Subscription)
+	p.invoices = make(map[string]*Invoice)
 	p.createError = nil
 	p.captureError = nil
 	p.refundError = nil

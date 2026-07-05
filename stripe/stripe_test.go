@@ -396,6 +396,66 @@ func TestMapRefundNilPaymentIntent(t *testing.T) {
 	}
 }
 
+func TestMapInvoice(t *testing.T) {
+	p := &Provider{}
+
+	inv := &stripe.Invoice{
+		ID:                "in_test",
+		Status:            stripe.InvoiceStatusPaid,
+		Number:            "ABC-0001",
+		Currency:          "usd",
+		AmountDue:         1999,
+		AmountPaid:        1999,
+		HostedInvoiceURL:  "https://pay.stripe.com/invoice/in_test",
+		InvoicePDF:        "https://pay.stripe.com/invoice/in_test/pdf",
+		Customer:          &stripe.Customer{ID: "cus_123"},
+		Subscription:      &stripe.Subscription{ID: "sub_123"},
+		Created:           1700000000,
+		DueDate:           1700100000,
+		StatusTransitions: &stripe.InvoiceStatusTransitions{PaidAt: 1700050000},
+		Metadata:          map[string]string{"note": "test"},
+	}
+
+	out := p.mapInvoice(inv)
+
+	if out.ID != "in_test" {
+		t.Errorf("ID = %s, want in_test", out.ID)
+	}
+	if out.Status != gopay.InvoiceStatusPaid {
+		t.Errorf("Status = %s, want paid", out.Status)
+	}
+	if out.Number != "ABC-0001" {
+		t.Errorf("Number = %s, want ABC-0001", out.Number)
+	}
+	if out.Amount == nil || out.Amount.Value != 1999 {
+		t.Errorf("Amount = %v, want 1999", out.Amount)
+	}
+	if out.AmountPaid == nil || out.AmountPaid.Value != 1999 {
+		t.Errorf("AmountPaid = %v, want 1999", out.AmountPaid)
+	}
+	if out.HostedInvoiceURL != "https://pay.stripe.com/invoice/in_test" {
+		t.Errorf("HostedInvoiceURL = %s", out.HostedInvoiceURL)
+	}
+	if out.PDFURL != "https://pay.stripe.com/invoice/in_test/pdf" {
+		t.Errorf("PDFURL = %s", out.PDFURL)
+	}
+	if out.CustomerID != "cus_123" {
+		t.Errorf("CustomerID = %s, want cus_123", out.CustomerID)
+	}
+	if out.SubscriptionID != "sub_123" {
+		t.Errorf("SubscriptionID = %s, want sub_123", out.SubscriptionID)
+	}
+	if out.PaidAt.IsZero() {
+		t.Error("PaidAt should be set")
+	}
+	if !out.IsPaid() {
+		t.Error("IsPaid() = false, want true")
+	}
+	if out.Provider != "stripe" {
+		t.Errorf("Provider = %s, want stripe", out.Provider)
+	}
+}
+
 func TestMapCustomer(t *testing.T) {
 	p := &Provider{}
 
