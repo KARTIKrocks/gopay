@@ -42,15 +42,20 @@ go get github.com/KARTIKrocks/gopay/razorpay
 
 ## Supported Providers
 
-| Provider | Payments | Refunds | Customers | Payment Methods | Setup Intents | Subscriptions | Webhooks | Listing |
-| -------- | -------- | ------- | --------- | --------------- | ------------- | ------------- | -------- | ------- |
-| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes           | Yes      | Yes     |
-| PayPal   | Yes      | Yes     | No        | No              | No            | No            | Yes      | No      |
-| Razorpay | Yes      | Yes     | Yes       | No              | No            | Yes           | Yes      | Yes     |
+| Provider | Payments | Refunds | Customers | Payment Methods | Setup Intents | Subscriptions | Invoices | Webhooks | Listing |
+| -------- | -------- | ------- | --------- | --------------- | ------------- | ------------- | -------- | -------- | ------- |
+| Stripe   | Yes      | Yes     | Yes       | Yes             | Yes           | Yes           | Yes      | Yes      | Yes     |
+| PayPal   | Yes      | Yes     | No        | No              | No            | No            | No       | Yes      | No      |
+| Razorpay | Yes      | Yes     | Yes       | No              | No            | Yes           | Yes      | Yes      | Yes     |
 
 PayPal's Orders API has no list endpoint, so listing calls return `ErrUnsupported`
 for the PayPal provider. Setup intents (save-card-without-charging) are currently
 implemented for Stripe only; PayPal returns `ErrUnsupported`.
+
+Invoices are read-only (`GetInvoice`) and implemented for Stripe and Razorpay,
+surfacing the normalized status, amounts, and a customer-facing hosted URL
+(Stripe's `hosted_invoice_url`, Razorpay's `short_url`). PayPal has no invoice
+concept in its Orders API and returns `ErrUnsupported`.
 
 Subscriptions (recurring billing) are supported by Stripe and Razorpay. Razorpay's
 model differs in a few ways callers must handle: a subscription requires a finite

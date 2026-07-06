@@ -640,6 +640,157 @@ func TestGetPaymentNotFoundHTTP(t *testing.T) {
 	}
 }
 
+func TestGetInvoiceHTTP(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/invoices/inv_001" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"id":"inv_001","invoice_number":"INV-1","customer_id":"cust_1","subscription_id":"sub_1","status":"paid","amount":5000,"amount_paid":5000,"currency":"INR","short_url":"https://rzp.io/i/abc","date":1700000000,"paid_at":1700050000,"notes":{"k":"v"}}`)); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
+	})
+
+	inv, err := p.GetInvoice(context.Background(), "inv_001")
+	if err != nil {
+		t.Fatalf("GetInvoice: %v", err)
+	}
+	if inv.ID != "inv_001" {
+		t.Errorf("ID = %s, want inv_001", inv.ID)
+	}
+	if inv.Status != gopay.InvoiceStatusPaid {
+		t.Errorf("Status = %s, want paid", inv.Status)
+	}
+	if inv.SubscriptionID != "sub_1" {
+		t.Errorf("SubscriptionID = %s, want sub_1", inv.SubscriptionID)
+	}
+	if inv.HostedInvoiceURL != "https://rzp.io/i/abc" {
+		t.Errorf("HostedInvoiceURL = %s, want https://rzp.io/i/abc", inv.HostedInvoiceURL)
+	}
+	if inv.Amount == nil || inv.Amount.Value != 5000 {
+		t.Errorf("Amount = %v, want 5000", inv.Amount)
+	}
+	if inv.Number != "INV-1" {
+		t.Errorf("Number = %s, want INV-1", inv.Number)
+	}
+	if !inv.IsPaid() {
+		t.Error("IsPaid() = false, want true")
+	}
+}
+
+// assertUnix checks that got matches wantTS (Unix seconds); wantTS == 0 asserts
+// a zero time.
+func assertUnix(t *testing.T, name string, got time.Time, wantTS int64) {
+	t.Helper()
+	if wantTS == 0 {
+		if !got.IsZero() {
+			t.Errorf("%s = %v, want zero", name, got)
+		}
+		return
+	}
+	if got.Unix() != wantTS {
+		t.Errorf("%s = %d, want %d", name, got.Unix(), wantTS)
+	}
+}
+
+func TestGetInvoiceMappingHTTP(t *testing.T) {
+	tests := []struct {
+		name          string
+		body          string
+		wantStatus    gopay.InvoiceStatus
+		wantAmountNil bool
+		wantCreatedTS int64 // 0 means zero time expected
+		wantDueTS     int64
+		wantPaidTS    int64
+	}{
+		{
+			name:          "no currency leaves amount nil",
+			body:          `{"id":"inv_x","status":"issued","amount":5000,"amount_paid":0}`,
+			wantStatus:    gopay.InvoiceStatusOpen,
+			wantAmountNil: true,
+		},
+		{
+			name:          "created_at falls back to date",
+			body:          `{"id":"inv_x","status":"draft","date":1700000000}`,
+			wantStatus:    gopay.InvoiceStatusDraft,
+			wantAmountNil: true,
+			wantCreatedTS: 1700000000,
+		},
+		{
+			name:          "created_at preferred over date",
+			body:          `{"id":"inv_x","status":"partially_paid","created_at":1700009999,"date":1700000000}`,
+			wantStatus:    gopay.InvoiceStatusOpen,
+			wantAmountNil: true,
+			wantCreatedTS: 1700009999,
+		},
+		{
+			name:          "expire_by and paid_at mapped",
+			body:          `{"id":"inv_x","status":"paid","currency":"INR","amount":100,"amount_paid":100,"expire_by":1700200000,"paid_at":1700050000}`,
+			wantStatus:    gopay.InvoiceStatusPaid,
+			wantAmountNil: false,
+			wantDueTS:     1700200000,
+			wantPaidTS:    1700050000,
+		},
+		{
+			name:          "cancelled maps to void",
+			body:          `{"id":"inv_x","status":"cancelled"}`,
+			wantStatus:    gopay.InvoiceStatusVoid,
+			wantAmountNil: true,
+		},
+		{
+			name:          "expired maps to void",
+			body:          `{"id":"inv_x","status":"expired"}`,
+			wantStatus:    gopay.InvoiceStatusVoid,
+			wantAmountNil: true,
+		},
+		{
+			name:          "deleted maps to void",
+			body:          `{"id":"inv_x","status":"deleted"}`,
+			wantStatus:    gopay.InvoiceStatusVoid,
+			wantAmountNil: true,
+		},
+		{
+			name:          "unknown status passed through",
+			body:          `{"id":"inv_x","status":"weird_state"}`,
+			wantStatus:    gopay.InvoiceStatus("weird_state"),
+			wantAmountNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if _, err := w.Write([]byte(tt.body)); err != nil {
+					t.Fatalf("failed to write response: %v", err)
+				}
+			})
+
+			inv, err := p.GetInvoice(context.Background(), "inv_x")
+			if err != nil {
+				t.Fatalf("GetInvoice: %v", err)
+			}
+			if inv.Status != tt.wantStatus {
+				t.Errorf("Status = %s, want %s", inv.Status, tt.wantStatus)
+			}
+			if tt.wantAmountNil {
+				if inv.Amount != nil {
+					t.Errorf("Amount = %v, want nil", inv.Amount)
+				}
+				if inv.AmountPaid != nil {
+					t.Errorf("AmountPaid = %v, want nil", inv.AmountPaid)
+				}
+			} else if inv.Amount == nil {
+				t.Error("Amount = nil, want non-nil")
+			}
+			assertUnix(t, "CreatedAt", inv.CreatedAt, tt.wantCreatedTS)
+			assertUnix(t, "DueDate", inv.DueDate, tt.wantDueTS)
+			assertUnix(t, "PaidAt", inv.PaidAt, tt.wantPaidTS)
+		})
+	}
+}
+
 func TestCapturePaymentHTTP(t *testing.T) {
 	callCount := 0
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {

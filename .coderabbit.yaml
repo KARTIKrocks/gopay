@@ -44,7 +44,7 @@ reviews:
         doc comments on exported types, functions, and methods. Flag any logging,
         printing, or error message that could leak secrets such as API keys,
         tokens, card numbers, CVV, or full PII.
-    - path: "{payment,list,setupintent,subscription}.go"
+    - path: "{payment,list,setupintent,subscription,invoice}.go"
       instructions: >-
         This is the core public API. Treat changes to exported types, function
         signatures, and interfaces as potentially breaking — call out any
