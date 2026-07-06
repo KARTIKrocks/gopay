@@ -456,6 +456,68 @@ func TestMapInvoice(t *testing.T) {
 	}
 }
 
+func TestMapInvoiceMissingOptionalFields(t *testing.T) {
+	p := &Provider{}
+
+	// Draft invoice with no Customer, Subscription, DueDate, StatusTransitions,
+	// or Currency set — every nil-guarded branch should be skipped.
+	inv := &stripe.Invoice{
+		ID:     "in_empty",
+		Status: stripe.InvoiceStatusDraft,
+	}
+
+	out := p.mapInvoice(inv)
+
+	if out.ID != "in_empty" {
+		t.Errorf("ID = %s, want in_empty", out.ID)
+	}
+	if out.Status != gopay.InvoiceStatusDraft {
+		t.Errorf("Status = %s, want draft", out.Status)
+	}
+	if out.Amount != nil {
+		t.Errorf("Amount = %v, want nil", out.Amount)
+	}
+	if out.AmountPaid != nil {
+		t.Errorf("AmountPaid = %v, want nil", out.AmountPaid)
+	}
+	if out.CustomerID != "" {
+		t.Errorf("CustomerID = %s, want empty", out.CustomerID)
+	}
+	if out.SubscriptionID != "" {
+		t.Errorf("SubscriptionID = %s, want empty", out.SubscriptionID)
+	}
+	if !out.DueDate.IsZero() {
+		t.Errorf("DueDate = %v, want zero", out.DueDate)
+	}
+	if !out.PaidAt.IsZero() {
+		t.Errorf("PaidAt = %v, want zero", out.PaidAt)
+	}
+	if out.IsPaid() {
+		t.Error("IsPaid() = true, want false")
+	}
+}
+
+func TestMapInvoiceStatus(t *testing.T) {
+	p := &Provider{}
+	tests := []struct {
+		in   stripe.InvoiceStatus
+		want gopay.InvoiceStatus
+	}{
+		{stripe.InvoiceStatusDraft, gopay.InvoiceStatusDraft},
+		{stripe.InvoiceStatusOpen, gopay.InvoiceStatusOpen},
+		{stripe.InvoiceStatusPaid, gopay.InvoiceStatusPaid},
+		{stripe.InvoiceStatusVoid, gopay.InvoiceStatusVoid},
+		{stripe.InvoiceStatusUncollectible, gopay.InvoiceStatusUncollectible},
+		{stripe.InvoiceStatus("mystery"), gopay.InvoiceStatus("mystery")},
+	}
+	for _, tt := range tests {
+		out := p.mapInvoice(&stripe.Invoice{Status: tt.in})
+		if out.Status != tt.want {
+			t.Errorf("status %q mapped to %q, want %q", tt.in, out.Status, tt.want)
+		}
+	}
+}
+
 func TestMapCustomer(t *testing.T) {
 	p := &Provider{}
 
