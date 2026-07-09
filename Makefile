@@ -3,9 +3,8 @@ GOIMPORTS_VERSION := v0.45.0
 
 MODULES = . ./stripe ./paypal ./razorpay
 SUB_MODULES = ./stripe ./paypal ./razorpay
-MODULE_PATH = github.com/KARTIKrocks/gopay
 
-.PHONY: all setup ci test test-race coverage lint lint-fix fix fmt fmt-check vet tidy build bench clean release-prep release-local
+.PHONY: all setup ci test test-race coverage lint lint-fix fix fmt fmt-check vet tidy build bench clean
 
 all: tidy fmt vet lint build test
 
@@ -109,35 +108,3 @@ bench:
 clean:
 	@rm -f coverage*.out
 
-## Prepare sub-modules for release: strip replace directives, set version
-## Usage: make release-prep VERSION=v0.1.0
-release-prep:
-ifndef VERSION
-	$(error VERSION is required. Usage: make release-prep VERSION=v0.1.0)
-endif
-	@for mod in $(SUB_MODULES); do \
-		echo "==> release-prep $$mod"; \
-		(cd $$mod && \
-		go mod edit -dropreplace $(MODULE_PATH) && \
-		go mod edit -require $(MODULE_PATH)@$(VERSION)) || exit 1; \
-	done
-	@echo ""
-	@echo "Done! Sub-modules now point to $(MODULE_PATH)@$(VERSION)"
-	@echo "Next steps:"
-	@echo "  git add -A && git commit -m 'Prepare release $(VERSION)'"
-	@echo "  git tag $(VERSION)"
-	@echo "  git tag stripe/$(VERSION)"
-	@echo "  git tag paypal/$(VERSION)"
-	@echo "  git tag razorpay/$(VERSION)"
-	@echo "  git push origin main --tags"
-
-## Restore replace directives for local development after a release
-release-local:
-	@for mod in $(SUB_MODULES); do \
-		echo "==> release-local $$mod"; \
-		(cd $$mod && \
-		go mod edit -replace $(MODULE_PATH)=../ && \
-		go mod tidy) || exit 1; \
-	done
-	@echo ""
-	@echo "Done! Sub-modules restored to local replace directives."
