@@ -13,7 +13,7 @@ This is a **multi-module workspace** — four separate `go.mod` files tied toget
 - `.` — core (`github.com/KARTIKrocks/gopay`), depends only on `google/uuid`
 - `stripe/`, `paypal/`, `razorpay/` — each its own module importing the core + that provider's SDK
 
-`go.work` makes local edits to the core module resolve immediately inside the sub-modules during development. The sub-module `go.mod` files `require` a published core version (e.g. `gopay v0.2.0`) rather than using `replace` directives — those are toggled only around releases (see `make release-prep` / `make release-local`). Because of this layout, `go` commands must be run **per module** (the Makefile loops over all four); a bare `go test ./...` from the root only covers the core package.
+The committed `go.work` makes local edits to the core module resolve immediately inside the sub-modules, in CI as well as on your machine — so a breaking change to the core fails the provider tests instead of passing a build that silently compiled against the last published core. The sub-module `go.mod` files `require` a published core version (e.g. `gopay v0.2.0`); no `go.mod` here carries a `replace` directive, and none should. Use `GOWORK=off` to reproduce a consumer's build. Because of this layout, `go` commands must be run **per module** (the Makefile loops over all four); a bare `go test ./...` from the root only covers the core package.
 
 ## Commands
 

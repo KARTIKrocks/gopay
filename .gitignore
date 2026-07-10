@@ -10,8 +10,14 @@
 *.out
 coverage*.out
 
-# Go workspace (local dev only, not needed by consumers)
-go.work
+# go.work is deliberately committed. Consumers never see it, but CI does:
+# without the workspace, every provider compiles against the last published root
+# module instead of the commit under test.
+#
+# go.work.sum is not. Go writes it only for sums the per-module go.sum files
+# cannot supply, which happens when workspace-wide MVS lifts a dependency above
+# what some module requires on its own. Committing it papers over that skew;
+# leaving it out means the build says so.
 go.work.sum
 
 # IDE
