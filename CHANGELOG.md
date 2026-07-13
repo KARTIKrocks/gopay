@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-07-13
+
+### Fixed
+
+- **Razorpay**: responses whose `notes` bag is empty no longer fail to decode.
+  Razorpay serialises an empty bag as `"notes": []` — a JSON array, not an
+  object — which a `map[string]string` field rejects, and the error takes the
+  whole response with it. Every entity was affected (order, payment, customer,
+  plan, subscription, invoice), so any object created without metadata was
+  unreadable. An empty array and `null` now both decode to a nil `Metadata` map;
+  a populated array (a shape Razorpay does not send) is still an error rather
+  than being silently dropped. Sending metadata is unchanged.
+
 ## [0.8.0] - 2026-07-06
 
 Read-only invoice access. Adds an optional `InvoiceProvider` capability so
