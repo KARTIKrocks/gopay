@@ -393,6 +393,10 @@ and sentinel errors remain matchable with `errors.Is`.
 - Dependabot configuration for all modules
 - golangci-lint v2 configuration
 
+[0.8.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.8.1
+[0.8.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.8.0
+[0.7.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.7.0
+[0.6.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.6.1
 [0.6.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.6.0
 [0.5.1]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.1
 [0.5.0]: https://github.com/KARTIKrocks/gopay/releases/tag/v0.5.0
