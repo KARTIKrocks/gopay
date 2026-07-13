@@ -24,6 +24,46 @@ const (
 	maxResponseSize = 10 << 20
 )
 
+// notes is Razorpay's key/value metadata bag as it comes back on responses.
+//
+// It needs its own unmarshaller because Razorpay does not serialise an empty
+// bag as an empty object: it sends `"notes": []` — a JSON *array* — which a
+// plain map[string]string rejects with "cannot unmarshal array into Go value of
+// type map[string]string", failing the whole response. Every entity is affected
+// (order, payment, customer, plan, subscription, invoice), so any object created
+// without notes was unreadable.
+//
+// An empty array and null both decode to a nil map; an object decodes normally.
+type notes map[string]string
+
+func (n *notes) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*n = nil
+		return nil
+	}
+	// Razorpay's empty-notes form. Only an *empty* array is tolerated: a
+	// populated array would mean the shape changed in a way we should not guess
+	// at, and silently dropping it would hide real data.
+	if trimmed[0] == '[' {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(trimmed, &arr); err != nil {
+			return err
+		}
+		if len(arr) > 0 {
+			return fmt.Errorf("razorpay: unexpected non-empty array for notes: %s", trimmed)
+		}
+		*n = nil
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(trimmed, &m); err != nil {
+		return err
+	}
+	*n = m
+	return nil
+}
+
 // Config holds Razorpay-specific configuration.
 type Config struct {
 	// KeyID is the Razorpay key ID.
@@ -1298,27 +1338,27 @@ type orderRequest struct {
 }
 
 type order struct {
-	ID        string            `json:"id"`
-	Amount    int64             `json:"amount"`
-	Currency  string            `json:"currency"`
-	Status    string            `json:"status"`
-	Receipt   string            `json:"receipt"`
-	Notes     map[string]string `json:"notes"`
-	CreatedAt int64             `json:"created_at"`
+	ID        string `json:"id"`
+	Amount    int64  `json:"amount"`
+	Currency  string `json:"currency"`
+	Status    string `json:"status"`
+	Receipt   string `json:"receipt"`
+	Notes     notes  `json:"notes"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 type razorpayPayment struct {
-	ID               string            `json:"id"`
-	Amount           int64             `json:"amount"`
-	Currency         string            `json:"currency"`
-	Status           string            `json:"status"`
-	Method           string            `json:"method"`
-	Description      string            `json:"description"`
-	AmountRefunded   int64             `json:"amount_refunded"`
-	ErrorCode        string            `json:"error_code"`
-	ErrorDescription string            `json:"error_description"`
-	Notes            map[string]string `json:"notes"`
-	CreatedAt        int64             `json:"created_at"`
+	ID               string `json:"id"`
+	Amount           int64  `json:"amount"`
+	Currency         string `json:"currency"`
+	Status           string `json:"status"`
+	Method           string `json:"method"`
+	Description      string `json:"description"`
+	AmountRefunded   int64  `json:"amount_refunded"`
+	ErrorCode        string `json:"error_code"`
+	ErrorDescription string `json:"error_description"`
+	Notes            notes  `json:"notes"`
+	CreatedAt        int64  `json:"created_at"`
 }
 
 type refundRequest struct {
@@ -1343,12 +1383,12 @@ type customerRequest struct {
 }
 
 type customer struct {
-	ID        string            `json:"id"`
-	Name      string            `json:"name"`
-	Email     string            `json:"email"`
-	Contact   string            `json:"contact"`
-	Notes     map[string]string `json:"notes"`
-	CreatedAt int64             `json:"created_at"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Contact   string `json:"contact"`
+	Notes     notes  `json:"notes"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 type planItem struct {
@@ -1373,8 +1413,8 @@ type plan struct {
 		Amount   int64  `json:"amount"`
 		Currency string `json:"currency"`
 	} `json:"item"`
-	Notes     map[string]string `json:"notes"`
-	CreatedAt int64             `json:"created_at"`
+	Notes     notes `json:"notes"`
+	CreatedAt int64 `json:"created_at"`
 }
 
 type subscriptionRequest struct {
@@ -1385,31 +1425,31 @@ type subscriptionRequest struct {
 }
 
 type subscription struct {
-	ID           string            `json:"id"`
-	PlanID       string            `json:"plan_id"`
-	CustomerID   string            `json:"customer_id"`
-	Status       string            `json:"status"`
-	CurrentStart int64             `json:"current_start"`
-	CurrentEnd   int64             `json:"current_end"`
-	EndedAt      int64             `json:"ended_at"`
-	ShortURL     string            `json:"short_url"`
-	Notes        map[string]string `json:"notes"`
-	CreatedAt    int64             `json:"created_at"`
+	ID           string `json:"id"`
+	PlanID       string `json:"plan_id"`
+	CustomerID   string `json:"customer_id"`
+	Status       string `json:"status"`
+	CurrentStart int64  `json:"current_start"`
+	CurrentEnd   int64  `json:"current_end"`
+	EndedAt      int64  `json:"ended_at"`
+	ShortURL     string `json:"short_url"`
+	Notes        notes  `json:"notes"`
+	CreatedAt    int64  `json:"created_at"`
 }
 
 type invoice struct {
-	ID             string            `json:"id"`
-	InvoiceNumber  string            `json:"invoice_number"`
-	CustomerID     string            `json:"customer_id"`
-	SubscriptionID string            `json:"subscription_id"`
-	Status         string            `json:"status"`
-	Amount         int64             `json:"amount"`
-	AmountPaid     int64             `json:"amount_paid"`
-	Currency       string            `json:"currency"`
-	ShortURL       string            `json:"short_url"`
-	Date           int64             `json:"date"`
-	PaidAt         int64             `json:"paid_at"`
-	ExpireBy       int64             `json:"expire_by"`
-	CreatedAt      int64             `json:"created_at"`
-	Notes          map[string]string `json:"notes"`
+	ID             string `json:"id"`
+	InvoiceNumber  string `json:"invoice_number"`
+	CustomerID     string `json:"customer_id"`
+	SubscriptionID string `json:"subscription_id"`
+	Status         string `json:"status"`
+	Amount         int64  `json:"amount"`
+	AmountPaid     int64  `json:"amount_paid"`
+	Currency       string `json:"currency"`
+	ShortURL       string `json:"short_url"`
+	Date           int64  `json:"date"`
+	PaidAt         int64  `json:"paid_at"`
+	ExpireBy       int64  `json:"expire_by"`
+	CreatedAt      int64  `json:"created_at"`
+	Notes          notes  `json:"notes"`
 }
