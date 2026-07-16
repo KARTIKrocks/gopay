@@ -18,7 +18,7 @@ jobs:
         module: [".", "./stripe", "./paypal", "./razorpay"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
       - name: Use local root module
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24"
       - name: Use local root module in sub-modules
@@ -65,7 +65,7 @@ jobs:
         module: [".", "./stripe", "./paypal", "./razorpay"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24"
       - name: Use local root module
@@ -83,7 +83,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24"
       - name: Use local root module in sub-modules
