@@ -1,0 +1,30 @@
+{
+  "files": [
+    {
+      "path": "AGENT.md",
+      "description": "Repository conventions: multi-module layout, build/test/lint commands, interface segregation, capability dispatch, error mapping, and builder-pattern architecture."
+    },
+    {
+      "path": "doc.go",
+      "description": "Package-level overview and usage patterns for the Client API."
+    },
+    {
+      "path": "payment.go",
+      "description": "The core Provider interface, Client capability dispatch, sentinel errors, PaymentRequest/RefundRequest builders (including IdempotencyKey), and the validate -> type-assert -> ErrUnsupported -> call -> wrap-error pattern every optional-capability Client method follows.",
+      "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go"]
+    },
+    {
+      "path": "currency.go",
+      "description": "The single source of truth for ISO-4217 currencies and minor-unit exponents, plus ParseMajorUnitAmount — the decimal<->minor-unit conversion that has twice had sign-loss bugs near zero.",
+      "scope": ["paypal/**/*.go"]
+    },
+    {
+      "path": "feature_gaps.md",
+      "description": "Documents which capabilities each provider intentionally does not implement and why (e.g. PayPal has no charge-free card-save flow) — check before flagging a provider's non-implementation of an optional interface as a gap."
+    },
+    {
+      "path": ".golangci.yml",
+      "description": "The linter ruleset already enforced in CI; avoid duplicating what golangci-lint already flags."
+    }
+  ]
+}

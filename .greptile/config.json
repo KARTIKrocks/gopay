@@ -1,0 +1,64 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax", "style"],
+  "triggerOnUpdates": true,
+  "statusCheck": true,
+  "ignorePatterns": "**/mock_*.go\n**/mock.go\n**/testdata/**\n**/go.sum\n**/go.work.sum\n**/vendor/**\n**/node_modules/**",
+  "instructions": "gopay is a unified payment-processing library for Go (github.com/KARTIKrocks/gopay) supporting Stripe, PayPal, and Razorpay behind provider-agnostic interfaces, sentinel errors, and a Client that gates optional capabilities via type assertions. This is a payment library: prioritize correctness of money handling, webhook-signature verification, and idempotency over style. Multi-module workspace tied together by go.work: core (`.`, depends only on google/uuid) plus stripe/, paypal/, razorpay/ as separate modules. See AGENT.md for architecture (interface segregation, capability dispatch, error mapping, builder pattern) and .greptile/rules.md for pattern rationale drawn from real bugs already fixed in this codebase. feature_gaps.md documents capabilities intentionally left unimplemented per provider (e.g. PayPal has no charge-free card-save flow) — don't flag those as missing/oversights.",
+  "rules": [
+    {
+      "id": "webhook-signature-verification",
+      "rule": "A webhook event must never be trusted, mapped, or acted on unless it went through the provider's VerifyWebhook, which checks a cryptographic signature over the raw payload. Each provider's each ParseWebhook (parses without verification) is documented as debugging-only and must never be suggested or used for production event handling. Signature comparison must be constant-time (hmac.Equal, as razorpay.go already does), never `==` or `bytes.Equal` on attacker-influenced input. Header lookups for signature headers (Stripe-Signature, X-Razorpay-Signature, PAYPAL-*) must be case-insensitive — this exact bug (a case-sensitive map/header lookup silently failing verification) has been fixed twice already, once for Stripe and once for PayPal.",
+      "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go", "payment.go"],
+      "severity": "high"
+    },
+    {
+      "id": "decimal-sign-near-zero",
+      "rule": "Code converting between major-unit decimal strings (e.g. PayPal's \"10.00\") and minor-unit integer Amounts must preserve the sign explicitly when the whole-number part is zero (e.g. -0.99, -0.50). Formatting or parsing that derives the sign from the integer whole part alone silently drops it when that part is 0. This exact bug has been fixed twice in this codebase (fromDecimal and toDecimal in paypal.go) — treat any new or modified decimal<->minor-unit conversion as needing an explicit test for a negative amount in the (-1.00, 0) range.",
+      "scope": ["currency.go", "paypal/**/*.go"],
+      "severity": "high"
+    },
+    {
+      "id": "provider-parity",
+      "rule": "A behavioral change to one provider's implementation of a shared capability (error mapping, webhook-event normalization into WebhookEventKind/PaymentID/OrderID/RefundID/SubscriptionID/Amount, pagination semantics) must be checked against the other providers implementing that same optional interface. A field populated for one provider's WebhookEvent but not another's for the equivalent event (this happened with InvoiceID between Stripe and Razorpay) is a parity bug, not a style nit — Client callers write provider-agnostic code against these fields.",
+      "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go", "payment.go", "list.go", "subscription.go", "invoice.go", "setupintent.go"],
+      "severity": "high"
+    },
+    {
+      "id": "idempotency-key-threading",
+      "rule": "A Client method that dispatches a mutating operation (create payment, refund, create customer, create plan/subscription, create setup intent) must accept and thread IdempotencyKey (via the existing WithIdempotencyKey builder pattern) through to the underlying provider call wherever that provider supports one — Stripe via params.SetIdempotencyKey, PayPal via the PayPal-Request-Id header, Razorpay via the order Receipt field. A new mutating provider method that omits this, when the request type already carries IdempotencyKey, risks a retried request double-charging a customer.",
+      "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go", "payment.go", "subscription.go", "setupintent.go"],
+      "severity": "high"
+    },
+    {
+      "id": "sentinel-error-mapping",
+      "rule": "Provider SDK errors must be funneled through that provider's mapError method to produce gopay's sentinel errors (ErrCardDeclined, ErrInsufficientFunds, ErrNotFound, etc.) so callers can use errors.Is regardless of provider. Flag any new provider method that returns a raw SDK error, or constructs a gopay error without going through mapError, where an equivalent sentinel already exists.",
+      "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go"],
+      "severity": "high"
+    },
+    {
+      "id": "capability-dispatch-pattern",
+      "rule": "A new Client method for an optional capability (mirroring CustomerProvider/PaymentMethodProvider/WebhookProvider/ListProvider/SetupIntentProvider/SubscriptionProvider/InvoiceProvider) must follow the established validate -> type-assert -> ErrUnsupported -> call -> wrap-error pattern in payment.go, not call the provider directly or skip the ErrUnsupported fallback for providers that don't implement the optional interface.",
+      "scope": ["payment.go", "list.go", "subscription.go", "setupintent.go", "invoice.go"],
+      "severity": "medium"
+    },
+    {
+      "id": "secret-and-pan-redaction",
+      "rule": "Never log, print, wrap into an error message, or otherwise surface API keys, webhook secrets, access tokens, full card/PAN numbers, or CVV. An error message that includes a request body or raw provider response must be checked for whether that payload could carry such a value.",
+      "scope": ["**/*.go"],
+      "severity": "high"
+    },
+    {
+      "id": "root-module-dependency-purity",
+      "rule": "The core module (files directly in the repository root) must depend only on the standard library and github.com/google/uuid. A new third-party dependency (an HTTP client, a provider SDK) belongs in stripe/, paypal/, or razorpay/ — never in the root go.mod.",
+      "scope": ["*.go", "go.mod"],
+      "severity": "high"
+    },
+    {
+      "id": "go-exported-docs",
+      "rule": "Every new or newly-exported type, function, method, and constant must have a doc comment that starts with the identifier's own name.",
+      "scope": ["**/*.go"],
+      "severity": "low"
+    }
+  ]
+}
