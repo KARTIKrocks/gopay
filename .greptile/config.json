@@ -32,7 +32,7 @@
     },
     {
       "id": "sentinel-error-mapping",
-      "rule": "Provider SDK errors must be funneled through that provider's mapError method to produce gopay's sentinel errors (ErrCardDeclined, ErrInsufficientFunds, ErrNotFound, etc.) so callers can use errors.Is regardless of provider. Flag any new provider method that returns a raw SDK error, or constructs a gopay error without going through mapError, where an equivalent sentinel already exists.",
+      "rule": "Provider SDK errors must be funneled through that provider's central error-translation function (mapError in stripe.go; parseError in paypal.go and razorpay.go) to produce gopay's sentinel errors (ErrCardDeclined, ErrInsufficientFunds, ErrNotFound, etc.) so callers can use errors.Is regardless of provider. Flag any new provider method that returns a raw SDK error, or constructs a gopay error inline without going through that provider's existing translation function, where an equivalent sentinel already exists.",
       "scope": ["stripe/**/*.go", "paypal/**/*.go", "razorpay/**/*.go"],
       "severity": "high"
     },
