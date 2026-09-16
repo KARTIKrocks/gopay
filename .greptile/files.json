@@ -19,12 +19,17 @@
       "scope": ["paypal/**/*.go"]
     },
     {
-      "path": "feature_gaps.md",
-      "description": "Documents which capabilities each provider intentionally does not implement and why (e.g. PayPal has no charge-free card-save flow) — check before flagging a provider's non-implementation of an optional interface as a gap."
+      "path": "README.md",
+      "description": "The Supported Providers matrix documents which capabilities each provider intentionally does not implement and why (e.g. PayPal has no charge-free card-save flow) — check before flagging a provider's non-implementation of an optional interface as a gap."
     },
     {
       "path": ".golangci.yml",
       "description": "The linter ruleset already enforced in CI; avoid duplicating what golangci-lint already flags."
+    },
+    {
+      "path": "website/VERSIONING.md",
+      "description": "Authoritative rules for the docs site's version-marker and snapshot conventions — check documentation changes against these, not just the website-docs-version-markers rule summary.",
+      "scope": ["website/docs/**/*.md"]
     }
   ]
 }

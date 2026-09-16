@@ -1,0 +1,49 @@
+{
+  "docsSidebar": [
+    "intro",
+    "getting-started",
+    {
+      "type": "category",
+      "label": "Core",
+      "collapsed": false,
+      "items": [
+        "client",
+        "payments",
+        "refunds",
+        "errors"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Capabilities",
+      "collapsed": false,
+      "items": [
+        "customers",
+        "payment-methods",
+        "setup-intents",
+        "subscriptions",
+        "invoices",
+        "listing-pagination",
+        "webhooks"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Providers",
+      "collapsed": false,
+      "items": [
+        "stripe",
+        "paypal",
+        "razorpay"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Testing",
+      "collapsed": false,
+      "items": [
+        "mock-provider"
+      ]
+    }
+  ]
+}

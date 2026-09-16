@@ -12,10 +12,17 @@ permissions:
   security-events: write
   contents: read
 
+# Supersede an in-flight run when a PR is pushed to again. Scheduled and main
+# runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
