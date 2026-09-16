@@ -52,7 +52,3 @@ These guides explain concepts, patterns, and provider quirks. For exact type
 signatures, method sets, and struct fields, use
 [pkg.go.dev](https://pkg.go.dev/github.com/KARTIKrocks/gopay) — it is
 generated from the source and is always authoritative.
-
-## Requirements
-
-Go 1.24 or later.

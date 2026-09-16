@@ -1,6 +1,6 @@
-GOLANGCI_LINT_VERSION := v2.12.2
-GOIMPORTS_VERSION := v0.45.0
-GOVULNCHECK_VERSION := v1.7.0
+GOLANGCI_LINT_VERSION := v2.13.2
+GOIMPORTS_VERSION := v0.50.0
+GOVULNCHECK_VERSION := v1.8.0
 
 # The Markdown linter. Versioned in website/package.json rather than pinned
 # here, so Dependabot keeps it current along with the rest of the docs toolchain.

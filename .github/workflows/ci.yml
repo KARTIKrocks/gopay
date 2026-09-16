@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.24"]
+        go-version: ["1.27"]
         module: [".", "./stripe", "./paypal", "./razorpay"]
     steps:
       - uses: actions/checkout@v7
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.27"
       - name: Use local root module in sub-modules
         run: |
           for mod in stripe paypal razorpay; do
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.27"
       - name: Use local root module
         if: matrix.module != '.'
         working-directory: ${{ matrix.module }}
@@ -114,7 +114,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.27"
       - name: Use local root module
         if: matrix.module != '.'
         working-directory: ${{ matrix.module }}
@@ -196,7 +196,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.27"
       - name: Use local root module in sub-modules
         run: |
           for mod in stripe paypal razorpay; do

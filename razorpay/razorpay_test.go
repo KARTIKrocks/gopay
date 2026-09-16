@@ -525,7 +525,7 @@ func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 
 func TestCreatePaymentHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/orders" {
+		if r.Method != http.MethodPost || r.URL.Path != "/orders" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -571,7 +571,7 @@ func TestCreatePaymentHTTP(t *testing.T) {
 
 func TestGetPaymentHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/orders/order_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/orders/order_001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -612,7 +612,7 @@ func TestGetPaymentFallbackHTTP(t *testing.T) {
 		}
 
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 
 	pay, err := p.GetPayment(context.Background(), "pay_001")
@@ -642,7 +642,7 @@ func TestGetPaymentNotFoundHTTP(t *testing.T) {
 
 func TestGetInvoiceHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/invoices/inv_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/invoices/inv_001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -798,7 +798,7 @@ func TestCapturePaymentHTTP(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		// First: fetches payment to get amount (when amt provided, skips this)
-		if r.Method == "POST" && r.URL.Path == "/payments/pay_001/capture" {
+		if r.Method == http.MethodPost && r.URL.Path == "/payments/pay_001/capture" {
 			body, _ := io.ReadAll(r.Body)
 			if !strings.Contains(string(body), `"amount":5000`) {
 				t.Errorf("capture body missing amount: %s", body)
@@ -808,7 +808,7 @@ func TestCapturePaymentHTTP(t *testing.T) {
 		}
 
 		t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 
 	pay, err := p.CapturePayment(context.Background(), "pay_001", gopay.INR(5000))
@@ -825,7 +825,7 @@ func TestCapturePaymentHTTP(t *testing.T) {
 
 func TestRefundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/payments/pay_001/refund" {
+		if r.Method != http.MethodPost || r.URL.Path != "/payments/pay_001/refund" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -858,7 +858,7 @@ func TestRefundHTTP(t *testing.T) {
 
 func TestGetRefundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/refunds/rfnd_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/refunds/rfnd_001" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -877,7 +877,7 @@ func TestGetRefundHTTP(t *testing.T) {
 
 func TestCreateCustomerHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/customers" {
+		if r.Method != http.MethodPost || r.URL.Path != "/customers" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -911,7 +911,7 @@ func TestCreateCustomerHTTP(t *testing.T) {
 
 func TestGetCustomerHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/customers/cust_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/customers/cust_001" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -930,7 +930,7 @@ func TestGetCustomerHTTP(t *testing.T) {
 
 func TestUpdateCustomerHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "PUT" || r.URL.Path != "/customers/cust_001" {
+		if r.Method != http.MethodPut || r.URL.Path != "/customers/cust_001" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -950,7 +950,7 @@ func TestUpdateCustomerHTTP(t *testing.T) {
 
 func TestCreatePaymentServerErrorHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`)); err != nil {
 			t.Fatalf("failed to write response: %v", err)
 		}

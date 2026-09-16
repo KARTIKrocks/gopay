@@ -17,7 +17,7 @@ The committed `go.work` makes local edits to the core module resolve immediately
 
 ## Commands
 
-Use the Makefile; it iterates over all four modules. Requires Go 1.24+ and golangci-lint v2 (installed automatically by `make setup`).
+Use the Makefile; it iterates over all four modules. Requires Go 1.27+ and golangci-lint v2 (installed automatically by `make setup`).
 
 ```bash
 make all          # tidy, fmt, vet, lint, build, test — run before requesting review
