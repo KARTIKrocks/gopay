@@ -1,7 +1,7 @@
 /**
  * Global styles. Infima is bundled by the classic theme.
  *
- * Palette follows the gopher mark: Go-blue primary, navy neutrals, a green
+ * Palette follows the mascot mark: Go-blue primary, navy neutrals, a green
  * accent lifted from the payment-card detail in the logo.
  *
  * Infima drives `color-scheme` from `--ifm-color-scheme`, which it flips under
@@ -63,7 +63,7 @@
     text-wrap: pretty;
   }
 
-  /* Inline code picks up the accent colour, matching the mark's card accent */
+  /* Inline code picks up the accent colour from the mark's payment detail. */
   :where(code) {
     background-color: var(--gopay-surface);
     border: none;
