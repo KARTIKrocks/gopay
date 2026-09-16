@@ -1,5 +1,11 @@
 version: "2"
 
+# Report every occurrence. The defaults (max-same-issues: 3) hide duplicates,
+# which makes a lint failure look smaller than it is.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   enable:
     - errcheck
@@ -12,19 +18,64 @@ linters:
     - gocyclo
     - revive
     - prealloc
+    # Security scanning matters for a library that parses webhook payloads
+    # and provider API responses from the network.
+    - gosec
+    # Error-handling discipline: %w-wrapped errors must be compared with
+    # errors.Is/As, and sentinel errors must be named Err*.
+    - errorlint
+    - errname
+    - nilerr
+    - nilnesserr
+    # Context and HTTP correctness — every provider call goes over the wire.
+    - contextcheck
+    - fatcontext
+    - noctx
+    - bodyclose
+    - durationcheck
+    - makezero
+    - wastedassign
+    - unconvert
+    # Correctness footguns.
+    - asasalint
+    - reassign
+    - usestdlibvars
+    - copyloopvar
+    - intrange
+    # Keep //nolint directives specific and explained.
+    - nolintlint
   settings:
     gocyclo:
       min-complexity: 15
     revive:
       rules:
         - name: exported
+    errcheck:
+      # An unchecked type assertion panics; deliberate `_ =` discards still pass.
+      check-type-assertions: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
   exclusions:
     rules:
       - linters:
           - errcheck
         path: examples/
+      # Tests may assert on unwrapped errors, ignore teardown errors, skip
+      # response-body cleanup, and build requests without a context; none of
+      # that ships to consumers.
+      - linters:
+          - bodyclose
+          - errorlint
+          - gosec
+          - intrange
+          - noctx
+        path: _test\.go
 
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    gofmt:
+      simplify: true

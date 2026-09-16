@@ -106,38 +106,36 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	}
 
 	params := &stripe.PaymentIntentParams{
-		Amount:   stripe.Int64(req.Amount.Value),
-		Currency: stripe.String(req.Amount.Currency),
+		Amount:   new(req.Amount.Value),
+		Currency: new(req.Amount.Currency),
 	}
 
 	if req.Description != "" {
-		params.Description = stripe.String(req.Description)
+		params.Description = new(req.Description)
 	}
 
 	if req.CustomerID != "" {
-		params.Customer = stripe.String(req.CustomerID)
+		params.Customer = new(req.CustomerID)
 	}
 
 	if req.PaymentMethodID != "" {
-		params.PaymentMethod = stripe.String(req.PaymentMethodID)
-		params.Confirm = stripe.Bool(true)
+		params.PaymentMethod = new(req.PaymentMethodID)
+		params.Confirm = new(true)
 	}
 
 	if req.ReturnURL != "" {
-		params.ReturnURL = stripe.String(req.ReturnURL)
+		params.ReturnURL = new(req.ReturnURL)
 	}
 
 	if req.CaptureMethod == gopay.CaptureManual {
-		params.CaptureMethod = stripe.String("manual")
+		params.CaptureMethod = new("manual")
 	} else {
-		params.CaptureMethod = stripe.String("automatic")
+		params.CaptureMethod = new("automatic")
 	}
 
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
+		maps.Copy(meta, req.Metadata)
 		params.Metadata = meta
 	}
 
@@ -171,7 +169,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amount 
 	params := &stripe.PaymentIntentCaptureParams{}
 
 	if amount != nil {
-		params.AmountToCapture = stripe.Int64(amount.Value)
+		params.AmountToCapture = new(amount.Value)
 	}
 
 	params.Context = ctx
@@ -202,15 +200,15 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 	}
 
 	params := &stripe.RefundParams{
-		PaymentIntent: stripe.String(req.PaymentID),
+		PaymentIntent: new(req.PaymentID),
 	}
 
 	if req.Amount != nil {
-		params.Amount = stripe.Int64(req.Amount.Value)
+		params.Amount = new(req.Amount.Value)
 	}
 
 	if req.Reason != "" {
-		params.Reason = stripe.String(p.mapRefundReason(req.Reason))
+		params.Reason = new(p.mapRefundReason(req.Reason))
 	}
 
 	if len(req.Metadata) > 0 {
@@ -249,16 +247,16 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 	params := &stripe.CustomerParams{}
 
 	if req.Email != "" {
-		params.Email = stripe.String(req.Email)
+		params.Email = new(req.Email)
 	}
 	if req.Name != "" {
-		params.Name = stripe.String(req.Name)
+		params.Name = new(req.Name)
 	}
 	if req.Phone != "" {
-		params.Phone = stripe.String(req.Phone)
+		params.Phone = new(req.Phone)
 	}
 	if req.Description != "" {
-		params.Description = stripe.String(req.Description)
+		params.Description = new(req.Description)
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
@@ -292,16 +290,16 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 	params := &stripe.CustomerParams{}
 
 	if req.Email != "" {
-		params.Email = stripe.String(req.Email)
+		params.Email = new(req.Email)
 	}
 	if req.Name != "" {
-		params.Name = stripe.String(req.Name)
+		params.Name = new(req.Name)
 	}
 	if req.Phone != "" {
-		params.Phone = stripe.String(req.Phone)
+		params.Phone = new(req.Phone)
 	}
 	if req.Description != "" {
-		params.Description = stripe.String(req.Description)
+		params.Description = new(req.Description)
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
@@ -332,7 +330,7 @@ func (p *Provider) DeleteCustomer(ctx context.Context, customerID string) error 
 // AttachPaymentMethod attaches a payment method to a customer.
 func (p *Provider) AttachPaymentMethod(ctx context.Context, customerID, paymentMethodID string) error {
 	params := &stripe.PaymentMethodAttachParams{
-		Customer: stripe.String(customerID),
+		Customer: new(customerID),
 	}
 	params.Context = ctx
 	_, err := p.api.PaymentMethods.Attach(paymentMethodID, params)
@@ -356,7 +354,7 @@ func (p *Provider) DetachPaymentMethod(ctx context.Context, paymentMethodID stri
 // ListPaymentMethods lists payment methods for a customer.
 func (p *Provider) ListPaymentMethods(ctx context.Context, customerID string) ([]*gopay.PaymentMethod, error) {
 	params := &stripe.PaymentMethodListParams{
-		Customer: stripe.String(customerID),
+		Customer: new(customerID),
 	}
 	params.Context = ctx
 
@@ -389,23 +387,23 @@ func (p *Provider) CreateSetupIntent(ctx context.Context, req *gopay.SetupIntent
 	if usage == "" {
 		usage = gopay.SetupIntentUsageOffSession
 	}
-	params.Usage = stripe.String(string(usage))
+	params.Usage = new(string(usage))
 
 	if req.CustomerID != "" {
-		params.Customer = stripe.String(req.CustomerID)
+		params.Customer = new(req.CustomerID)
 	}
 	if req.PaymentMethodID != "" {
-		params.PaymentMethod = stripe.String(req.PaymentMethodID)
-		params.Confirm = stripe.Bool(true)
+		params.PaymentMethod = new(req.PaymentMethodID)
+		params.Confirm = new(true)
 		// Stripe only accepts return_url when the intent is confirmed
 		// (confirm=true); otherwise the API rejects the request. In the
 		// frontend-confirmation flow the return URL is supplied at confirm time.
 		if req.ReturnURL != "" {
-			params.ReturnURL = stripe.String(req.ReturnURL)
+			params.ReturnURL = new(req.ReturnURL)
 		}
 	}
 	if req.Description != "" {
-		params.Description = stripe.String(req.Description)
+		params.Description = new(req.Description)
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
@@ -469,15 +467,15 @@ func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gop
 	}
 
 	params := &stripe.PriceParams{
-		Currency:   stripe.String(req.Amount.Currency),
-		UnitAmount: stripe.Int64(req.Amount.Value),
-		Nickname:   stripe.String(name),
+		Currency:   new(req.Amount.Currency),
+		UnitAmount: new(req.Amount.Value),
+		Nickname:   new(name),
 		Recurring: &stripe.PriceRecurringParams{
-			Interval:      stripe.String(string(req.Interval)),
-			IntervalCount: stripe.Int64(int64(count)),
+			Interval:      new(string(req.Interval)),
+			IntervalCount: new(int64(count)),
 		},
 		ProductData: &stripe.PriceProductDataParams{
-			Name: stripe.String(name),
+			Name: new(name),
 		},
 	}
 	if len(req.Metadata) > 0 {
@@ -526,16 +524,16 @@ func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.Subscripti
 	}
 
 	params := &stripe.SubscriptionParams{
-		Customer: stripe.String(req.CustomerID),
+		Customer: new(req.CustomerID),
 		Items: []*stripe.SubscriptionItemsParams{
-			{Price: stripe.String(req.PlanID)},
+			{Price: new(req.PlanID)},
 		},
 	}
 	if req.PaymentMethodID != "" {
-		params.DefaultPaymentMethod = stripe.String(req.PaymentMethodID)
+		params.DefaultPaymentMethod = new(req.PaymentMethodID)
 	}
 	if req.TrialDays > 0 {
-		params.TrialPeriodDays = stripe.Int64(int64(req.TrialDays))
+		params.TrialPeriodDays = new(int64(req.TrialDays))
 	}
 	if len(req.Metadata) > 0 {
 		meta := make(map[string]string, len(req.Metadata))
@@ -640,7 +638,7 @@ func mapInvoiceStatus(s stripe.InvoiceStatus) gopay.InvoiceStatus {
 func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string, opts *gopay.CancelOptions) (*gopay.Subscription, error) {
 	if opts != nil && opts.AtPeriodEnd {
 		params := &stripe.SubscriptionParams{
-			CancelAtPeriodEnd: stripe.Bool(true),
+			CancelAtPeriodEnd: new(true),
 		}
 		params.Context = ctx
 		sub, err := p.api.Subscriptions.Update(subscriptionID, params)
@@ -717,9 +715,9 @@ func (p *Provider) ListCustomers(ctx context.Context, params *gopay.ListParams) 
 func applyStripeListParams(lp *stripe.ListParams, ctx context.Context, params *gopay.ListParams) {
 	lp.Context = ctx
 	lp.Single = true
-	lp.Limit = stripe.Int64(int64(params.EffectiveLimit()))
+	lp.Limit = new(int64(params.EffectiveLimit()))
 	if params != nil && params.Cursor != "" {
-		lp.StartingAfter = stripe.String(params.Cursor)
+		lp.StartingAfter = new(params.Cursor)
 	}
 }
 
@@ -754,7 +752,7 @@ func (p *Provider) VerifyWebhook(_ context.Context, payload []byte, headers map[
 	}
 	event, err := webhook.ConstructEvent(payload, signature, p.config.WebhookSecret)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrProviderError, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrProviderError, err)
 	}
 	return buildWebhookEvent(event), nil
 }
@@ -1254,8 +1252,7 @@ func mapPaymentMethodType(t stripe.PaymentMethodType) gopay.PaymentMethodType {
 }
 
 func (p *Provider) mapError(err error) error {
-	var stripeErr *stripe.Error
-	if errors.As(err, &stripeErr) {
+	if stripeErr, ok := errors.AsType[*stripe.Error](err); ok {
 		switch stripeErr.Code {
 		case stripe.ErrorCodeCardDeclined:
 			return fmt.Errorf("%w: %s", gopay.ErrCardDeclined, stripeErr.Msg)

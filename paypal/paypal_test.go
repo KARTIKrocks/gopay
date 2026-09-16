@@ -526,7 +526,7 @@ func newTestProvider(t *testing.T, handler http.HandlerFunc) *Provider {
 
 func TestCreatePaymentHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/v2/checkout/orders" {
+		if r.Method != http.MethodPost || r.URL.Path != "/v2/checkout/orders" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -624,7 +624,7 @@ func TestCreatePaymentManualCapture(t *testing.T) {
 
 func TestGetPaymentHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/v2/checkout/orders/ORDER-001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/v2/checkout/orders/ORDER-001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -655,7 +655,7 @@ func TestGetPaymentHTTP(t *testing.T) {
 
 func TestGetPaymentNotFoundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"name":"RESOURCE_NOT_FOUND","message":"not found"}`))
 	})
 
@@ -667,7 +667,7 @@ func TestGetPaymentNotFoundHTTP(t *testing.T) {
 
 func TestGetRefundHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/v2/payments/refunds/REFUND-001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/v2/payments/refunds/REFUND-001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -702,7 +702,7 @@ func TestRefundHTTP(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		// First call: GetPayment (to find capture_id)
-		if r.Method == "GET" && r.URL.Path == "/v2/checkout/orders/ORDER-001" {
+		if r.Method == http.MethodGet && r.URL.Path == "/v2/checkout/orders/ORDER-001" {
 			_, _ = w.Write([]byte(`{
 				"id": "ORDER-001",
 				"intent": "CAPTURE",
@@ -714,7 +714,7 @@ func TestRefundHTTP(t *testing.T) {
 		}
 
 		// Second call: actual refund
-		if r.Method == "POST" && r.URL.Path == "/v2/payments/captures/CAP-001/refund" {
+		if r.Method == http.MethodPost && r.URL.Path == "/v2/payments/captures/CAP-001/refund" {
 			body, _ := io.ReadAll(r.Body)
 			if !strings.Contains(string(body), `"value":"5.00"`) {
 				t.Errorf("refund body missing amount: %s", body)
@@ -730,7 +730,7 @@ func TestRefundHTTP(t *testing.T) {
 		}
 
 		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 
 	req := gopay.NewRefundRequest("ORDER-001").
@@ -750,7 +750,7 @@ func TestRefundHTTP(t *testing.T) {
 
 func TestCreatePaymentServerError(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"name":"INTERNAL_SERVER_ERROR","message":"server error"}`))
 	})
 
@@ -781,7 +781,7 @@ func TestVerifyWebhookHeaderCasing(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/notifications/verify-webhook-signature" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		if err := json.NewDecoder(r.Body).Decode(&forwarded); err != nil {
@@ -872,7 +872,7 @@ func TestCancelPaymentHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		if r.Method == "GET" && r.URL.Path == "/v2/checkout/orders/ORDER-AUTH" {
+		if r.Method == http.MethodGet && r.URL.Path == "/v2/checkout/orders/ORDER-AUTH" {
 			_, _ = w.Write([]byte(`{
 				"id": "ORDER-AUTH",
 				"intent": "AUTHORIZE",
@@ -883,13 +883,13 @@ func TestCancelPaymentHTTP(t *testing.T) {
 			return
 		}
 
-		if r.Method == "POST" && r.URL.Path == "/v2/payments/authorizations/AUTH-001/void" {
-			w.WriteHeader(204)
+		if r.Method == http.MethodPost && r.URL.Path == "/v2/payments/authorizations/AUTH-001/void" {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
 		t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	})
 
 	pay, err := p.CancelPayment(context.Background(), "ORDER-AUTH")

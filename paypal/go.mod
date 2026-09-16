@@ -1,6 +1,6 @@
 module github.com/KARTIKrocks/gopay/paypal
 
-go 1.24
+go 1.27
 
 require github.com/KARTIKrocks/gopay v0.8.1
 

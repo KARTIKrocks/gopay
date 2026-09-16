@@ -13,7 +13,7 @@ import (
 
 func TestCreatePlanHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/plans" {
+		if r.Method != http.MethodPost || r.URL.Path != "/plans" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -73,7 +73,7 @@ func TestCreatePlanUnsupportedInterval(t *testing.T) {
 
 func TestGetPlanHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/plans/plan_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/plans/plan_001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -91,7 +91,7 @@ func TestGetPlanHTTP(t *testing.T) {
 
 func TestCreateSubscriptionHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/subscriptions" {
+		if r.Method != http.MethodPost || r.URL.Path != "/subscriptions" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 
@@ -149,7 +149,7 @@ func TestCreateSubscriptionRequiresTotalCount(t *testing.T) {
 
 func TestGetSubscriptionHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/subscriptions/sub_001" {
+		if r.Method != http.MethodGet || r.URL.Path != "/subscriptions/sub_001" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -173,7 +173,7 @@ func TestGetSubscriptionHTTP(t *testing.T) {
 
 func TestCancelSubscriptionImmediateHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/subscriptions/sub_001/cancel" {
+		if r.Method != http.MethodPost || r.URL.Path != "/subscriptions/sub_001/cancel" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		body, _ := io.ReadAll(r.Body)

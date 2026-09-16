@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 	"time"
@@ -76,9 +77,7 @@ func (p *MockProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (
 	// Deep copy amount and metadata to avoid aliasing with caller.
 	amt := &Amount{Value: req.Amount.Value, Currency: req.Amount.Currency}
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	payment := &Payment{
 		ID:              id,
@@ -196,9 +195,7 @@ func (p *MockProvider) Refund(ctx context.Context, req *RefundRequest) (*Refund,
 	}
 
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	id := "re_" + uuid.New().String()[:8]
 
@@ -241,9 +238,7 @@ func (p *MockProvider) CreateCustomer(ctx context.Context, req *CustomerRequest)
 	id := "cus_" + uuid.New().String()[:8]
 
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	customer := &Customer{
 		ID:          id,
@@ -297,9 +292,7 @@ func (p *MockProvider) UpdateCustomer(ctx context.Context, customerID string, re
 	if req.Description != "" {
 		customer.Description = req.Description
 	}
-	for k, v := range req.Metadata {
-		customer.Metadata[k] = v
-	}
+	maps.Copy(customer.Metadata, req.Metadata)
 
 	return customer, nil
 }
@@ -401,9 +394,7 @@ func (p *MockProvider) CreateSetupIntent(_ context.Context, req *SetupIntentRequ
 	}
 
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	id := "seti_" + uuid.New().String()[:8]
 	si := &SetupIntent{
@@ -491,9 +482,7 @@ func (p *MockProvider) CreatePlan(_ context.Context, req *PlanRequest) (*Plan, e
 	}
 
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	id := "plan_" + uuid.New().String()[:8]
 	plan := &Plan{
@@ -550,9 +539,7 @@ func (p *MockProvider) CreateSubscription(_ context.Context, req *SubscriptionRe
 	}
 
 	meta := make(map[string]string, len(req.Metadata))
-	for k, v := range req.Metadata {
-		meta[k] = v
-	}
+	maps.Copy(meta, req.Metadata)
 
 	now := time.Now()
 	periodEnd := addInterval(now, plan.Interval, plan.IntervalCount)
@@ -740,7 +727,7 @@ func (p *MockProvider) VerifyWebhook(_ context.Context, payload []byte, _ map[st
 		Currency  string           `json:"currency"`
 	}
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrProviderError, err)
+		return nil, fmt.Errorf("%w: %w", ErrProviderError, err)
 	}
 
 	ev := &WebhookEvent{
@@ -873,9 +860,7 @@ func (p *MockProvider) Payments() map[string]*Payment {
 	defer p.mu.RUnlock()
 
 	result := make(map[string]*Payment)
-	for k, v := range p.payments {
-		result[k] = v
-	}
+	maps.Copy(result, p.payments)
 	return result
 }
 
@@ -885,9 +870,7 @@ func (p *MockProvider) Refunds() map[string]*Refund {
 	defer p.mu.RUnlock()
 
 	result := make(map[string]*Refund)
-	for k, v := range p.refunds {
-		result[k] = v
-	}
+	maps.Copy(result, p.refunds)
 	return result
 }
 
@@ -897,9 +880,7 @@ func (p *MockProvider) Customers() map[string]*Customer {
 	defer p.mu.RUnlock()
 
 	result := make(map[string]*Customer)
-	for k, v := range p.customers {
-		result[k] = v
-	}
+	maps.Copy(result, p.customers)
 	return result
 }
 

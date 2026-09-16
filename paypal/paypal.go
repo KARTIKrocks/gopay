@@ -259,7 +259,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/checkout/orders", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/checkout/orders", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrPaymentFailed, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -301,7 +301,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/v2/checkout/orders/"+paymentID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/v2/checkout/orders/"+paymentID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 		bodyReader = bytes.NewReader(body)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/checkout/orders/"+paymentID+"/capture", bodyReader)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/checkout/orders/"+paymentID+"/capture", bodyReader)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +414,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 
 // authorizeOrder authorizes an AUTHORIZE-intent order after buyer approval.
 func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (string, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/checkout/orders/"+orderID+"/authorize", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/checkout/orders/"+orderID+"/authorize", nil)
 	if err != nil {
 		return "", err
 	}
@@ -424,7 +424,7 @@ func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (s
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", gopay.ErrPaymentFailed, err)
+		return "", fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -468,7 +468,7 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 		bodyReader = bytes.NewReader(body)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/payments/authorizations/"+authID+"/capture", bodyReader)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/payments/authorizations/"+authID+"/capture", bodyReader)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/payments/authorizations/"+authID+"/void", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/payments/authorizations/"+authID+"/void", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -523,7 +523,7 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrPaymentFailed, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -575,7 +575,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 		return nil, fmt.Errorf("marshal refund request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v2/payments/captures/"+captureID+"/refund", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v2/payments/captures/"+captureID+"/refund", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -589,7 +589,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrRefundFailed, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrRefundFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -617,7 +617,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/v2/payments/refunds/"+refundID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/v2/payments/refunds/"+refundID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +703,7 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v1/notifications/verify-webhook-signature", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v1/notifications/verify-webhook-signature", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -713,7 +713,7 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: webhook verification failed: %s", gopay.ErrProviderError, err)
+		return nil, fmt.Errorf("%w: webhook verification failed: %w", gopay.ErrProviderError, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -776,7 +776,8 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 		} `json:"supplementary_data"`
 	}
 	if err := json.Unmarshal(event.Resource, &res); err != nil {
-		return ev, nil // best-effort: Raw is still available to the caller
+		//nolint:nilerr // best-effort: Raw is still available to the caller
+		return ev, nil
 	}
 
 	switch ev.Kind {
@@ -830,7 +831,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 		return p.accessToken, nil
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/v1/oauth2/token", bytes.NewBufferString("grant_type=client_credentials"))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/v1/oauth2/token", bytes.NewBufferString("grant_type=client_credentials"))
 	if err != nil {
 		return "", err
 	}

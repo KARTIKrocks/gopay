@@ -8,8 +8,6 @@ description: Install gopay and create your first payment with Stripe, PayPal, or
 
 ## Installation
 
-Requires **Go 1.24+**.
-
 ```bash
 # Core library (interfaces, types, mock provider)
 go get github.com/KARTIKrocks/gopay

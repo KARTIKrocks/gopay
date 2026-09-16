@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-16
+
+Raises the minimum Go version and modernizes the toolchain. No public API
+changes.
+
+### Changed
+
+- **Core, Stripe, PayPal, Razorpay**: minimum Go version raised from 1.24 to
+  1.27. Consumers on an older toolchain will fail to build; bump your Go
+  installation before upgrading.
+- **CI**: `.golangci.yml` enables a wider modern linter set (`errorlint`,
+  `gosec`, `usestdlibvars`, `nilerr`, and others); `Makefile` tool pins
+  (`golangci-lint`, `goimports`, `govulncheck`) bumped to their current
+  releases.
+- **CI**: `codeql.yml` now scans each provider sub-module under its own
+  result category instead of colliding all findings into one, so per-module
+  security findings no longer overwrite each other in the Security tab.
+
+### Fixed
+
+- Sentinel errors passed through `fmt.Errorf` now use `%w` consistently so
+  `errors.Is`/`errors.As` chains reach the wrapped cause in a few places that
+  previously used `%s`/`%v` and broke the chain.
+
 ## [0.8.1] - 2026-07-13
 
 ### Fixed

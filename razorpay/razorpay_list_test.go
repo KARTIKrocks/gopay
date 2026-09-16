@@ -45,7 +45,7 @@ func TestBuildRazorpayList(t *testing.T) {
 
 func TestListPaymentsHTTP(t *testing.T) {
 	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/payments" {
+		if r.Method != http.MethodGet || r.URL.Path != "/payments" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		q := r.URL.Query()

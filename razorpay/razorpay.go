@@ -185,7 +185,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/orders", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/orders", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrPaymentFailed, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -218,7 +218,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 // GetPayment retrieves an order or payment.
 func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Payment, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/orders/"+paymentID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/orders/"+paymentID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 }
 
 func (p *Provider) getPaymentByID(ctx context.Context, paymentID string) (*gopay.Payment, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/payments/"+paymentID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/payments/"+paymentID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 		return nil, fmt.Errorf("marshal capture request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/payments/"+paymentID+"/capture", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/payments/"+paymentID+"/capture", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +359,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/payments/"+req.PaymentID+"/refund", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/payments/"+req.PaymentID+"/refund", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", gopay.ErrRefundFailed, err)
+		return nil, fmt.Errorf("%w: %w", gopay.ErrRefundFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -392,7 +392,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 // GetRefund retrieves a refund.
 func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refund, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/refunds/"+refundID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/refunds/"+refundID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +440,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.config.BaseURL+"/customers", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.config.BaseURL+"/customers", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 
 // GetCustomer retrieves a customer.
 func (p *Provider) GetCustomer(ctx context.Context, customerID string) (*gopay.Customer, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", p.config.BaseURL+"/customers/"+customerID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.BaseURL+"/customers/"+customerID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "PUT", p.config.BaseURL+"/customers/"+customerID, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, p.config.BaseURL+"/customers/"+customerID, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +587,7 @@ func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gop
 		Notes: req.Metadata,
 	}
 
-	respBody, err := p.doJSON(ctx, "POST", "/plans", reqBody)
+	respBody, err := p.doJSON(ctx, http.MethodPost, "/plans", reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -601,7 +601,7 @@ func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gop
 
 // GetPlan retrieves a plan by ID.
 func (p *Provider) GetPlan(ctx context.Context, planID string) (*gopay.Plan, error) {
-	respBody, err := p.doJSON(ctx, "GET", "/plans/"+planID, nil)
+	respBody, err := p.doJSON(ctx, http.MethodGet, "/plans/"+planID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +641,7 @@ func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.Subscripti
 		reqBody.StartAt = time.Now().Add(time.Duration(req.TrialDays) * 24 * time.Hour).Unix()
 	}
 
-	respBody, err := p.doJSON(ctx, "POST", "/subscriptions", reqBody)
+	respBody, err := p.doJSON(ctx, http.MethodPost, "/subscriptions", reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -655,7 +655,7 @@ func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.Subscripti
 
 // GetSubscription retrieves a subscription by ID.
 func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (*gopay.Subscription, error) {
-	respBody, err := p.doJSON(ctx, "GET", "/subscriptions/"+subscriptionID, nil)
+	respBody, err := p.doJSON(ctx, http.MethodGet, "/subscriptions/"+subscriptionID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -669,7 +669,7 @@ func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (
 
 // GetInvoice retrieves an invoice by ID.
 func (p *Provider) GetInvoice(ctx context.Context, invoiceID string) (*gopay.Invoice, error) {
-	respBody, err := p.doJSON(ctx, "GET", "/invoices/"+invoiceID, nil)
+	respBody, err := p.doJSON(ctx, http.MethodGet, "/invoices/"+invoiceID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -744,7 +744,7 @@ func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string
 		reqBody["cancel_at_cycle_end"] = 1
 	}
 
-	respBody, err := p.doJSON(ctx, "POST", "/subscriptions/"+subscriptionID+"/cancel", reqBody)
+	respBody, err := p.doJSON(ctx, http.MethodPost, "/subscriptions/"+subscriptionID+"/cancel", reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -973,7 +973,7 @@ func (p *Provider) ListCustomers(ctx context.Context, params *gopay.ListParams) 
 func (p *Provider) doListRequest(ctx context.Context, path string, skip, count int) ([]byte, error) {
 	url := fmt.Sprintf("%s%s?count=%d&skip=%d", p.config.BaseURL, path, count, skip)
 
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1102,7 +1102,8 @@ func ParseWebhook(payload []byte) (*gopay.WebhookEvent, error) {
 		} `json:"subscription"`
 	}
 	if err := json.Unmarshal(event.Payload, &pl); err != nil {
-		return ev, nil // best-effort: Raw is still available to the caller
+		//nolint:nilerr // best-effort: Raw is still available to the caller
+		return ev, nil
 	}
 
 	// Subscription events carry a subscription entity, and subscription.charged

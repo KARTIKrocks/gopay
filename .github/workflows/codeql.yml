@@ -9,7 +9,6 @@ on:
     - cron: "0 6 * * 1"
 
 permissions:
-  security-events: write
   contents: read
 
 # Supersede an in-flight run when a PR is pushed to again. Scheduled and main
@@ -19,10 +18,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Scanned per module for the same reason `lint` and `vuln` in ci.yml are: the
+  # root module's ./... stops at nested go.mod boundaries, so a single build
+  # from the root extracts no code at all from the provider sub-modules.
+  #
+  # `category` must differ per module. CodeQL keys uploaded results by it, so
+  # without it each module's results would overwrite the previous module's and
+  # the security tab would only ever show whichever job finished last.
   analyze:
-    name: Analyze
+    name: Analyze (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "./stripe", "./paypal", "./razorpay"]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -30,25 +43,32 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.27"
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@v4.38.0
         with:
           languages: go
 
-      - name: Use local root module in sub-modules
-        run: |
-          for mod in stripe paypal razorpay; do
-            (cd $mod && go mod edit -replace github.com/KARTIKrocks/gopay=../)
-          done
-
-      - name: Build all modules
-        run: |
-          go build ./...
-          cd stripe && go build ./... && cd ..
-          cd paypal && go build ./... && cd ..
-          cd razorpay && go build ./... && cd ..
+      # Note the absence of the `go mod edit -replace` that ci.yml uses here.
+      # That replace exists to catch API drift at compile time, which is a test
+      # concern. Doing it here would pull the root module's source into this
+      # job's source root too, so every root-module finding would be reported
+      # four times over, once per module category. Building each provider
+      # sub-module against its pinned gopay release keeps the root out of scope
+      # for the three provider jobs, where the "." job already covers it.
+      #
+      # GOWORK=off is load-bearing: the committed root go.work (see its header
+      # comment) auto-activates for any `go` command run under stripe/, paypal/,
+      # or razorpay/, which would silently resolve gopay back to local source
+      # and reintroduce the duplicate-findings problem this step exists to avoid.
+      - name: Build
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: "off"
+        run: go build ./...
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@v4.38.0
+        with:
+          category: "/language:go/module:${{ matrix.module }}"
