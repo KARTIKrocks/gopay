@@ -2,6 +2,6 @@ module github.com/KARTIKrocks/gopay/razorpay
 
 go 1.27
 
-require github.com/KARTIKrocks/gopay v0.8.1
+require github.com/KARTIKrocks/gopay v0.9.0
 
 require github.com/google/uuid v1.6.0 // indirect
