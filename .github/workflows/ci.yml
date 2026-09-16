@@ -9,10 +9,18 @@ on:
 permissions:
   contents: read
 
+# Supersede an in-flight run when a PR is pushed to again. Runs on main are
+# never cancelled — coverage there is the recorded baseline.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         go-version: ["1.24"]
         module: [".", "./stripe", "./paypal", "./razorpay"]
@@ -31,6 +39,7 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -60,7 +69,9 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         module: [".", "./stripe", "./paypal", "./razorpay"]
     steps:
@@ -72,14 +83,114 @@ jobs:
         if: matrix.module != '.'
         working-directory: ${{ matrix.module }}
         run: go mod edit -replace github.com/KARTIKrocks/gopay=../
+      # Version comes from the Makefile so a local `make lint` and this gate
+      # run the same linter. Nothing bumps it automatically — Dependabot does
+      # not track action `with:` inputs — so refresh GOLANGCI_LINT_VERSION in
+      # the Makefile deliberately.
+      - name: Resolve golangci-lint version
+        id: golangci-lint-version
+        run: echo "version=$(make -s print-golangci-lint-version)" >> "$GITHUB_OUTPUT"
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: ${{ steps.golangci-lint-version.outputs.version }}
           working-directory: ${{ matrix.module }}
           args: --timeout=5m
 
+  # Not redundant with Dependabot or CodeQL, which cover different things:
+  # Dependabot reports that a dependency is behind, CodeQL looks for bug
+  # patterns in our own code. govulncheck cross-references the Go
+  # vulnerability database against the call graph, so it reports only
+  # advisories this code actually reaches — which is what makes it quiet
+  # enough to gate a merge on.
+  vuln:
+    name: vuln (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [".", "./stripe", "./paypal", "./razorpay"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.24"
+      - name: Use local root module
+        if: matrix.module != '.'
+        working-directory: ${{ matrix.module }}
+        run: go mod edit -replace github.com/KARTIKrocks/gopay=../
+      # Version comes from the Makefile so a local `make vuln` and this gate
+      # run the same scanner. Nothing bumps it automatically — Dependabot does
+      # not track `go install` lines — so refresh GOVULNCHECK_VERSION in the
+      # Makefile deliberately. The advisory database is still fetched at run
+      # time, so an older scanner still reports current advisories.
+      - name: Install govulncheck
+        run: |
+          version="$(make -s print-govulncheck-version)"
+          echo "govulncheck $version"
+          go install "golang.org/x/vuln/cmd/govulncheck@$version"
+      - name: Scan
+        working-directory: ${{ matrix.module }}
+        run: govulncheck ./...
+
+  # Structural linting for every Markdown file in the repo. This lives here
+  # rather than in the Docs workflow because that one is path-filtered to
+  # website/**, so a change to the root README, CONTRIBUTING, or CHANGELOG
+  # would never trigger it. Config and rule rationale: .markdownlint-cli2.jsonc.
+  docs-lint:
+    name: lint (markdown)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Install
+        working-directory: website
+        run: npm ci
+      # Run from the repository root, not website/. The config globs every .md
+      # in the repo and globs resolve against the working directory, so running
+      # this from website/ would silently check only the site's own pages.
+      - name: Lint Markdown
+        run: website/node_modules/.bin/markdownlint-cli2
+
+  # THIS IS THE ONLY JOB THAT SHOULD BE A REQUIRED STATUS CHECK.
+  #
+  # Requiring the matrix jobs directly is brittle: their check names embed the
+  # matrix values, so adding a module or renaming a job silently orphans the
+  # required context and every PR then blocks forever on a check that no
+  # longer exists. Gating on one stable name instead means the matrix is free
+  # to change.
+  #
+  # `if: always()` is load-bearing. Without it this job is skipped when a
+  # dependency fails, and GitHub counts a skipped required check as passing —
+  # a failing build would report mergeable.
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [test, coverage, lint, vuln, docs-lint]
+    steps:
+      - name: Verify every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
+          if echo "$NEEDS" | jq -e 'any(.[]; .result != "success")' >/dev/null; then
+            echo "::error::one or more CI jobs did not succeed"
+            exit 1
+          fi
+          echo "all jobs succeeded"
+
+  # Not part of the `ci` gate: this runs only on main, so on a pull request it
+  # is skipped and would drag the gate down with it.
   bench:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v7

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-labelledby="title desc">
+  <title id="title">gopay</title>
+  <desc id="desc">A cheerful Go-inspired payment mascot holding a payment card.</desc>
+  <defs>
+    <linearGradient id="body" x1="48" y1="28" x2="153" y2="142" gradientUnits="userSpaceOnUse"><stop stop-color="#39C7F2"/><stop offset="1" stop-color="#0AA5D8"/></linearGradient>
+    <linearGradient id="card" x1="50" y1="101" x2="157" y2="164" gradientUnits="userSpaceOnUse"><stop stop-color="#D9E8F5"/><stop offset="1" stop-color="#AFC7DA"/></linearGradient>
+    <filter id="shadow" x="19" y="14" width="164" height="171" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity=".35"/></filter>
+  </defs>
+  <g>
+    <circle cx="57" cy="50" r="19" fill="#12B1E3"/><circle cx="143" cy="50" r="19" fill="#12B1E3"/>
+    <circle cx="57" cy="50" r="8" fill="#10233C" opacity=".58"/><circle cx="143" cy="50" r="8" fill="#10233C" opacity=".58"/>
+    <path d="M49 120V86c0-36 22-57 51-57s51 21 51 57v34c0 17-13 30-30 30H79c-17 0-30-13-30-30Z" fill="url(#body)"/>
+    <ellipse cx="77" cy="80" rx="24" ry="25" fill="#FFF"/><ellipse cx="123" cy="80" rx="24" ry="25" fill="#FFF"/>
+    <circle cx="82" cy="84" r="9" fill="#122B48"/><circle cx="118" cy="84" r="9" fill="#122B48"/>
+    <circle cx="85" cy="80" r="2.5" fill="#FFF"/><circle cx="121" cy="80" r="2.5" fill="#FFF"/>
+    <path d="M92 96c5-5 11-5 16 0l4 5c2 3 1 7-2 9l-10 5-10-5c-3-2-4-6-2-9l4-5Z" fill="#122B48"/>
+    <path d="M100 111v12M91 108v10M109 108v10" fill="none" stroke="#FFF" stroke-linecap="round" stroke-width="4"/>
+    <path d="M100 123c-7 0-12 5-12 11M100 123c7 0 12 5 12 11" fill="none" stroke="#122B48" stroke-linecap="round" stroke-width="3"/>
+    <path d="M57 121c-13 0-23 10-23 23 0 9 5 16 13 20l18-12-1-24-7-7Z" fill="#14B7E7"/><path d="M143 121c13 0 23 10 23 23 0 9-5 16-13 20l-18-12 1-24 7-7Z" fill="#14B7E7"/>
+    <circle cx="46" cy="143" r="14" fill="#22C1EB"/><circle cx="154" cy="143" r="14" fill="#22C1EB"/>
+    <g transform="rotate(-6 100 139)">
+      <rect x="48" y="111" width="104" height="61" rx="9" fill="url(#card)"/><path d="M50 126h100v13H50z" fill="#17324E"/>
+      <path d="M63 145h55" stroke="#54738D" stroke-linecap="round" stroke-width="6"/><path d="M63 158h33" stroke="#54738D" stroke-linecap="round" stroke-width="5"/>
+      <circle cx="126" cy="153" r="10" fill="#08A973"/><circle cx="138" cy="153" r="10" fill="#27D995"/>
+    </g>
+  </g>
+</svg>

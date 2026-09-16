@@ -15,17 +15,38 @@ reviews:
   high_level_summary: true
   changed_files_summary: true
   sequence_diagrams: true
+  estimate_code_review_effort: true
   poem: true
   review_status: true
+  # Report review status as a GitHub commit status, but never fail the build.
+  commit_status: true
+  fail_commit_status: false
   collapse_walkthrough: false
   assess_linked_issues: true
   related_issues: true
+  related_prs: true
+  suggested_reviewers: true
+  suggested_labels: true
+  auto_apply_labels: false
 
   auto_review:
     enabled: true
     drafts: false
     base_branches:
       - main
+    # Skip release/automation PRs that don't need a human-style review.
+    ignore_title_keywords:
+      - "wip"
+      - "release"
+    ignore_usernames:
+      - "dependabot[bot]"
+
+  # Let the bot offer docstrings and test scaffolding, but not auto-simplify.
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
 
   # Files CodeRabbit should ignore (generated/vendored/lock files add noise).
   path_filters:
@@ -33,6 +54,17 @@ reviews:
     - "!**/go.work.sum"
     - "!**/*.pb.go"
     - "!**/mock.go"
+    - "!**/node_modules/**"
+    - "!**/package-lock.json"
+    # Frozen snapshots of website/docs taken at release time. A docs change
+    # lands in website/docs only — snapshots are produced by cut-version and
+    # are never hand-edited, so any suggestion here is unactionable by
+    # definition: a published snapshot documents the behaviour of a shipped
+    # version, and changing it rewrites history for users still on it.
+    - "!website/versioned_docs/**"
+    - "!website/versioned_sidebars/**"
+    # Generated raster assets and the logo SVGs; nothing to review as text.
+    - "!website/static/**"
 
   # Targeted, path-scoped guidance for the reviewer.
   path_instructions:
@@ -56,12 +88,33 @@ reviews:
         bodies are closed, idempotency keys are used for charge/refund calls
         where the provider supports them, and provider secrets are never logged.
         Confirm error responses from the provider are mapped to gopay's error
-        types rather than swallowed.
+        types rather than swallowed. Two bug classes have recurred here and
+        need explicit re-checking on any touching change: (1) webhook
+        signature header lookups (Stripe-Signature, X-Razorpay-Signature,
+        PAYPAL-*) must be case-insensitive, and signature comparison must be
+        constant-time; (2) code converting between a major-unit decimal
+        string (PayPal amounts) and a minor-unit integer Amount must preserve
+        the sign explicitly when the whole-number part is zero (e.g. -0.99),
+        not derive it from that now-zero whole part.
     - path: "**/*_test.go"
       instructions: >-
         Prefer table-driven tests. Check that error paths and edge cases (zero
         amounts, invalid currencies, network failures) are covered. Tests must
         not contain real API keys or live network calls.
+    - path: "website/docs/**"
+      instructions: >-
+        Docusaurus source for the unreleased docs. Verify every Go snippet
+        compiles against the current API and that option/type names match the
+        exported identifiers exactly — a wrong name here is a support burden,
+        not a typo. This site is versioned by snapshot, not per release:
+        additive changes are marked inline instead of being snapshotted, so
+        check that anything documenting a new API carries its version marker
+        — `_0.9+_` appended to an API table's description cell,
+        `_Added in 0.9._` opening a prose paragraph, or a trailing `// 0.9+`
+        comment inside a code block. Behaviour that changed takes
+        `_Changed in 0.9._` plus a line on what it was before. See
+        website/VERSIONING.md rules 1 and 2. Do not suggest edits to
+        website/versioned_docs; those are frozen release snapshots.
 
   tools:
     # Reuse the repo's existing golangci-lint configuration (.golangci.yml).
@@ -69,6 +122,13 @@ reviews:
       enabled: true
     # Secret scanning — important for a library that handles provider credentials.
     gitleaks:
+      enabled: true
+    # Lint GitHub Actions workflows and Markdown docs.
+    actionlint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
       enabled: true
 
 chat:
@@ -79,3 +139,7 @@ knowledge_base:
     scope: auto
   issues:
     scope: auto
+  pull_requests:
+    scope: auto
+  web_search:
+    enabled: true

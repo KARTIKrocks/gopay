@@ -3,8 +3,8 @@
   "commentTypes": ["logic", "syntax", "style"],
   "triggerOnUpdates": true,
   "statusCheck": true,
-  "ignorePatterns": "**/mock_*.go\n**/mock.go\n**/testdata/**\n**/go.sum\n**/go.work.sum\n**/vendor/**\n**/node_modules/**",
-  "instructions": "gopay is a unified payment-processing library for Go (github.com/KARTIKrocks/gopay) supporting Stripe, PayPal, and Razorpay behind provider-agnostic interfaces, sentinel errors, and a Client that gates optional capabilities via type assertions. This is a payment library: prioritize correctness of money handling, webhook-signature verification, and idempotency over style. Multi-module workspace tied together by go.work: core (`.`, depends only on google/uuid) plus stripe/, paypal/, razorpay/ as separate modules. See AGENT.md for architecture (interface segregation, capability dispatch, error mapping, builder pattern) and .greptile/rules.md for pattern rationale drawn from real bugs already fixed in this codebase. feature_gaps.md documents capabilities intentionally left unimplemented per provider (e.g. PayPal has no charge-free card-save flow) — don't flag those as missing/oversights.",
+  "ignorePatterns": "**/mock_*.go\n**/mock.go\n**/testdata/**\n**/go.sum\n**/go.work.sum\n**/vendor/**\n**/node_modules/**\nwebsite/package-lock.json\nwebsite/versioned_docs/**\nwebsite/versioned_sidebars/**\nwebsite/static/**",
+  "instructions": "gopay is a unified payment-processing library for Go (github.com/KARTIKrocks/gopay) supporting Stripe, PayPal, and Razorpay behind provider-agnostic interfaces, sentinel errors, and a Client that gates optional capabilities via type assertions. This is a payment library: prioritize correctness of money handling, webhook-signature verification, and idempotency over style. Multi-module workspace tied together by go.work: core (`.`, depends only on google/uuid) plus stripe/, paypal/, razorpay/ as separate modules. See AGENT.md for architecture (interface segregation, capability dispatch, error mapping, builder pattern) and .greptile/rules.md for pattern rationale drawn from real bugs already fixed in this codebase. Providers intentionally leave some optional interfaces unimplemented (e.g. PayPal has no charge-free card-save flow, so it doesn't implement SetupIntentProvider) — check README.md's support matrix before flagging a provider's non-implementation of an optional interface as a gap. website/ is a Docusaurus documentation site published to GitHub Pages; website/docs/ is unreleased and tracks main, website/versioned_docs/ is frozen per-release history — see website/VERSIONING.md.",
   "rules": [
     {
       "id": "webhook-signature-verification",
@@ -59,6 +59,12 @@
       "rule": "Every new or newly-exported type, function, method, and constant must have a doc comment that starts with the identifier's own name.",
       "scope": ["**/*.go"],
       "severity": "low"
+    },
+    {
+      "id": "website-docs-version-markers",
+      "rule": "A documented API addition on this page must carry a version marker in one of these exact forms: '_X.Y+_' appended to a table cell's description, '_Added in X.Y._' opening a prose paragraph, or a trailing '// X.Y+' comment inside a code block. Documented behaviour that changed must use '_Changed in X.Y._' followed by one line describing the prior behaviour. gopay is pre-1.0, so X is currently 0 and a minor bump can itself be breaking. See website/VERSIONING.md rules 1 and 2. Never suggest an edit to website/versioned_docs/ — those are frozen release snapshots.",
+      "scope": ["website/docs/**/*.md"],
+      "severity": "medium"
     }
   ]
 }

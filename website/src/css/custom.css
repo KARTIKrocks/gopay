@@ -1,0 +1,113 @@
+/**
+ * Global styles. Infima is bundled by the classic theme.
+ *
+ * Palette follows the mascot mark: Go-blue primary, navy neutrals, a green
+ * accent lifted from the payment-card detail in the logo.
+ *
+ * Infima drives `color-scheme` from `--ifm-color-scheme`, which it flips under
+ * [data-theme='dark']. That makes `light-dark()` authoritative here, so every
+ * token is a single declaration instead of a light block plus a dark override.
+ */
+
+@layer gopay.tokens, gopay.base, gopay.content;
+
+@layer gopay.tokens {
+  :root {
+    /* Primary — Go-blue, with Infima's six shades */
+    --ifm-color-primary: light-dark(#0f7fa8, #38bdf8);
+    --ifm-color-primary-dark: light-dark(#0c6a8c, #0ea5e9);
+    --ifm-color-primary-darker: light-dark(#0b5f7d, #0284c7);
+    --ifm-color-primary-darkest: light-dark(#094a63, #075985);
+    --ifm-color-primary-light: light-dark(#1d9bcb, #7dd3fc);
+    --ifm-color-primary-lighter: light-dark(#29b6e8, #bae6fd);
+    --ifm-color-primary-lightest: light-dark(#7dd3fc, #e0f2fe);
+
+    /* Neutrals — navy, matching the payment-card detail in the mark */
+    --ifm-background-color: light-dark(#ffffff, #0b1220);
+    --ifm-background-surface-color: light-dark(#f8fafc, #101b30);
+    --ifm-font-color-base: light-dark(#334155, #dbe4f0);
+    --ifm-heading-color: light-dark(#1b2a4a, #f1f5f9);
+    --ifm-toc-border-color: light-dark(#e2e8f0, #24344f);
+    --ifm-color-emphasis-300: light-dark(#e2e8f0, #24344f);
+
+    /* Accent — green, lifted from the card's payment-network mark */
+    --gopay-accent: light-dark(#16a34a, #4ade80);
+    --gopay-surface: light-dark(#f1f5f9, #101b30);
+
+    --ifm-code-font-size: 90%;
+    --ifm-font-family-base:
+      "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+    --docusaurus-highlighted-code-line-bg: light-dark(
+      rgb(0 0 0 / 0.1),
+      rgb(255 255 255 / 0.1)
+    );
+  }
+}
+
+@layer gopay.base {
+  :where(html) {
+    scroll-behavior: smooth;
+    scroll-padding-block-start: 5rem;
+
+    @media (prefers-reduced-motion: reduce) {
+      scroll-behavior: auto;
+    }
+  }
+
+  :where(h1, h2, h3) {
+    text-wrap: balance;
+  }
+
+  :where(p) {
+    text-wrap: pretty;
+  }
+
+  /* Inline code picks up the accent colour from the mark's payment detail. */
+  :where(code) {
+    background-color: var(--gopay-surface);
+    border: none;
+    color: var(--gopay-accent);
+  }
+
+  :where(a) code {
+    color: inherit;
+  }
+
+  ::-webkit-scrollbar {
+    inline-size: 8px;
+    block-size: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--ifm-background-color);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ifm-toc-border-color);
+    border-radius: 4px;
+  }
+}
+
+@layer gopay.content {
+  /*
+   * API/support-matrix tables: the first column holds identifiers, so it
+   * must not wrap. The table scrolls inside its own container rather than
+   * the page.
+   */
+  .markdown table {
+    display: block;
+    overflow-x: auto;
+    max-inline-size: 100%;
+    font-size: 0.9rem;
+
+    & td:first-child {
+      white-space: nowrap;
+      font-family: var(--ifm-font-family-monospace);
+
+      & code {
+        white-space: nowrap;
+      }
+    }
+  }
+}

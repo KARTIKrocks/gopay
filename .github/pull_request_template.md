@@ -1,10 +1,12 @@
+<!-- A PR body is a form, not a document; its sections start at h2 by design. -->
+<!-- markdownlint-disable-next-line MD041 -->
 ## Summary
 
-<!-- Brief description of the changes -->
+<!-- Brief description of what this PR does and why -->
 
 ## Motivation
 
-<!-- Why is this change needed? Link to any related issues. -->
+<!-- Why is this change needed? Link to related issues -->
 
 Fixes #
 
@@ -14,9 +16,19 @@ Fixes #
 
 -
 
+## Test Plan
+
+<!-- How was this tested? What should reviewers run/check? -->
+
+- [ ] `make ci` passes (fmt-check, vet, lint, test-race, vuln)
+- [ ] `make lint-docs` passes if `website/` or any `.md` file changed
+
 ## Checklist
 
-- [ ] All checks pass (`make ci`)
-- [ ] Linter passes (`make lint`)
-- [ ] New code has tests where appropriate
-- [ ] Breaking changes are documented
+- [ ] Tests added or updated for changed behavior
+- [ ] Docs updated (`README.md` / `website/docs/`) if the public API changed
+- [ ] No breaking changes — or breaking changes described below
+
+### Breaking Changes
+
+<!-- If applicable, describe what breaks and how to migrate -->

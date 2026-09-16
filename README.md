@@ -1,18 +1,60 @@
-# gopay
+<!-- The centred logo block opens the file, so there is no h1 on line 1. -->
+<!-- markdownlint-disable-next-line MD041 -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="website/static/img/logo-dark.svg">
+    <img src="website/static/img/logo.svg" alt="gopay" width="104" height="104">
+  </picture>
+</p>
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/KARTIKrocks/gopay.svg)](https://pkg.go.dev/github.com/KARTIKrocks/gopay)
-[![Go Report Card](https://goreportcard.com/badge/github.com/KARTIKrocks/gopay)](https://goreportcard.com/report/github.com/KARTIKrocks/gopay)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/KARTIKrocks/gopay)](go.mod)
-[![CI](https://github.com/KARTIKrocks/gopay/actions/workflows/ci.yml/badge.svg)](https://github.com/KARTIKrocks/gopay/actions/workflows/ci.yml)
-[![GitHub tag](https://img.shields.io/github/v/tag/KARTIKrocks/gopay)](https://github.com/KARTIKrocks/gopay/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![codecov](https://codecov.io/gh/KARTIKrocks/gopay/branch/main/graph/badge.svg)](https://codecov.io/gh/KARTIKrocks/gopay)
+<h1 align="center">gopay</h1>
 
-A unified payment processing library for Go with support for Stripe, PayPal, and Razorpay.
+<p align="center">
+  A unified payment-processing library for Go with support for Stripe,
+  PayPal, and Razorpay.
+</p>
 
-Each provider is a separate Go module, so you only pull in the dependencies you need.
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/KARTIKrocks/gopay"><img src="https://pkg.go.dev/badge/github.com/KARTIKrocks/gopay.svg" alt="Go Reference"></a>
+  <a href="https://github.com/KARTIKrocks/gopay/releases"><img src="https://img.shields.io/github/v/tag/KARTIKrocks/gopay" alt="GitHub tag"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/KARTIKrocks/gopay" alt="Go version"></a>
+  <a href="https://github.com/KARTIKrocks/gopay/actions/workflows/ci.yml"><img src="https://github.com/KARTIKrocks/gopay/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://goreportcard.com/report/github.com/KARTIKrocks/gopay"><img src="https://goreportcard.com/badge/github.com/KARTIKrocks/gopay" alt="Go Report Card"></a>
+  <a href="https://codecov.io/gh/KARTIKrocks/gopay"><img src="https://codecov.io/gh/KARTIKrocks/gopay/branch/main/graph/badge.svg" alt="codecov"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <b><a href="https://kartikrocks.github.io/gopay/">Documentation</a></b> ·
+  <b><a href="https://pkg.go.dev/github.com/KARTIKrocks/gopay">API Reference</a></b> ·
+  <b><a href="CHANGELOG.md">Changelog</a></b>
+</p>
+
+## Why gopay?
+
+Calling a payment provider's SDK directly gets you a working integration
+with exactly one provider. Everything past that — the parts that turn "I can
+charge a card with Stripe" into "I can swap in Razorpay for a region without
+rewriting my checkout code" — is what gopay provides:
+
+| Capability | gopay | Calling the SDK directly |
+| - | - | - |
+| One interface across Stripe, PayPal, Razorpay | ✓ | You build it |
+| Sentinel errors (`errors.Is`) instead of per-SDK error types | ✓ | You build it |
+| Builder + `Validate()` requests catch mistakes before the API call | ✓ | You build it |
+| Cursor-based pagination, normalized across providers | ✓ | You build it |
+| Webhook signature verification + normalized event kinds | ✓ | You build it |
+| Mock provider for tests — no network, no API keys | ✓ | You build it |
+| Dependency isolation — only the SDKs you actually use | ✓ | N/A |
+
+gopay isn't a replacement for a provider's SDK — each provider package wraps
+the official one. It's the interface layer that lets you write checkout,
+refund, and webhook code once instead of once per provider.
 
 ## Installation
+
+Each provider is a separate Go module, so you only pull in the dependencies
+you need.
 
 ```bash
 # Core library (interfaces, types, mock provider)
@@ -215,7 +257,8 @@ if err != nil {
 
 Create a recurring plan, then subscribe a customer to it. The subscription
 charges the customer's payment method each billing cycle. This is an optional
-capability (Stripe only at present; other providers return `ErrUnsupported`).
+capability implemented by Stripe and Razorpay; PayPal returns
+`ErrUnsupported`.
 
 ```go
 // Create a recurring plan (amount + interval). In Stripe this becomes a

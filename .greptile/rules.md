@@ -66,12 +66,13 @@ change.
 
 ## Deliberate gaps are documented, not oversights
 
-`feature_gaps.md` explains, per capability, which providers intentionally
-return `ErrUnsupported` and why — e.g. PayPal has no charge-free card-save
-flow so it doesn't implement `SetupIntentProvider` at all, and forcing the
-abstraction would risk silently authorizing or charging a customer who
-expected no charge. Don't flag a provider's non-implementation of an optional
-interface as a missing feature without checking `feature_gaps.md` first.
+README.md's Supported Providers matrix explains, per capability, which
+providers intentionally return `ErrUnsupported` and why — e.g. PayPal has no
+charge-free card-save flow so it doesn't implement `SetupIntentProvider` at
+all, and forcing the abstraction would risk silently authorizing or charging
+a customer who expected no charge. Don't flag a provider's non-implementation
+of an optional interface as a missing feature without checking that matrix
+first.
 
 ## Multi-module boundaries
 
@@ -82,3 +83,12 @@ change in whichever provider module(s) implement the affected surface, in the
 same PR — the root module's own tests won't catch a mismatch, since each
 provider module only pulls in the root via its pinned `require` (overridden
 locally by `go.work`, never by a `replace`).
+
+## Documentation site versioning
+
+`website/docs/` is unreleased and tracks `main`; `website/versioned_docs/` is
+frozen history cut by `website/scripts/cut-version.mjs`. gopay is pre-1.0, so
+unlike a post-1.0 project a minor version bump (`0.7` → `0.8`) can itself be a
+breaking change per semver's own rule for `0.y.z` — there is no "only
+snapshot at a major" exception here. See `website/VERSIONING.md` for the full
+policy `website-docs-version-markers` summarizes.

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="gopay">
+  <defs><linearGradient id="bg" x1="8" y1="5" x2="56" y2="60" gradientUnits="userSpaceOnUse"><stop stop-color="#14B8EA"/><stop offset="1" stop-color="#0799CF"/></linearGradient></defs>
+  <circle cx="16" cy="16" r="9" fill="#079DDA"/><circle cx="48" cy="16" r="9" fill="#079DDA"/>
+  <path d="M9 42V28C9 13 19 7 32 7s23 6 23 21v14c0 9-7 15-15 15H24c-8 0-15-6-15-15Z" fill="url(#bg)"/>
+  <ellipse cx="23" cy="28" rx="11" ry="12" fill="#FFF"/><ellipse cx="41" cy="28" rx="11" ry="12" fill="#FFF"/>
+  <circle cx="25" cy="30" r="4.5" fill="#183150"/><circle cx="39" cy="30" r="4.5" fill="#183150"/>
+  <path d="M28 36c2-2 6-2 8 0l1 2-5 3-5-3 1-2Z" fill="#183150"/>
+  <g transform="rotate(-6 32 47)"><rect x="10" y="40" width="44" height="20" rx="4" fill="#183150"/><path d="M12 46h40" stroke="#0B1D35" stroke-width="5"/><path d="M17 53h17" stroke="#A7C2D5" stroke-linecap="round" stroke-width="3"/><circle cx="43" cy="53" r="4" fill="#22D99C"/></g>
+</svg>

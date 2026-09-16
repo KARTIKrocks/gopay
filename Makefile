@@ -1,10 +1,15 @@
 GOLANGCI_LINT_VERSION := v2.12.2
 GOIMPORTS_VERSION := v0.45.0
+GOVULNCHECK_VERSION := v1.7.0
+
+# The Markdown linter. Versioned in website/package.json rather than pinned
+# here, so Dependabot keeps it current along with the rest of the docs toolchain.
+MARKDOWNLINT := website/node_modules/.bin/markdownlint-cli2
 
 MODULES = . ./stripe ./paypal ./razorpay
 SUB_MODULES = ./stripe ./paypal ./razorpay
 
-.PHONY: all setup ci test test-race coverage lint lint-fix fix fmt fmt-check vet tidy build bench clean
+.PHONY: all setup ci test test-race coverage lint lint-fix fix fmt fmt-check vet tidy build bench clean vuln lint-docs lint-docs-fix print-golangci-lint-version print-govulncheck-version
 
 all: tidy fmt vet lint build test
 
@@ -19,8 +24,11 @@ setup:
 		go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION); \
 	}
 
-## CI: run lint and tests with race detector (used in CI pipelines)
-ci: fmt-check vet lint test-race
+## CI: run what the required `ci` gate job runs for Go changes (fmt, vet,
+## lint, race tests, vuln scan). Docs changes should also run `make
+## lint-docs` — left out here since it needs `npm ci` in website/ first and
+## most local iteration doesn't touch docs.
+ci: fmt-check vet lint test-race vuln
 
 ## Build all modules
 build:
@@ -103,6 +111,50 @@ bench:
 		echo "==> Benchmarking $$mod"; \
 		(cd $$mod && go test -bench=. -benchmem ./...) || exit 1; \
 	done
+
+## Scan every module for known vulnerabilities, filtered to advisories this
+## code actually reaches. Mirrors the `vuln` CI job, which gates merges.
+##
+## Needs network access — the advisory database is fetched on every run.
+##
+## Note this also scans the standard library of whichever Go toolchain you have
+## installed, so it can fail locally on a green branch when your Go is a patch
+## release behind the one CI pins. That is a real finding about your machine,
+## not a false positive.
+vuln:
+	@command -v govulncheck >/dev/null 2>&1 || { \
+		echo "Installing govulncheck $(GOVULNCHECK_VERSION)..."; \
+		go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION); \
+	}
+	@for mod in $(MODULES); do \
+		echo "==> Scanning $$mod"; \
+		(cd $$mod && govulncheck ./...) || exit 1; \
+	done
+
+## Lint every Markdown file in the repo — the docs site, the README, and the
+## contributor/security policies. Config and rationale live in
+## .markdownlint-cli2.jsonc. Needs Node; the binary comes from website/, which
+## is the only npm project here.
+lint-docs:
+	@test -x "$(MARKDOWNLINT)" || { echo "Run 'npm ci' in website/ first."; exit 1; }
+	@$(MARKDOWNLINT)
+
+## Auto-fix what markdownlint-cli2 can fix automatically.
+lint-docs-fix:
+	@test -x "$(MARKDOWNLINT)" || { echo "Run 'npm ci' in website/ first."; exit 1; }
+	@$(MARKDOWNLINT) --fix
+
+## Print the pinned scanner version. CI installs govulncheck with this rather
+## than hardcoding a second copy of the number, so the workflow and this file
+## cannot drift apart.
+print-govulncheck-version:
+	@echo $(GOVULNCHECK_VERSION)
+
+## Print the pinned linter version. CI resolves golangci-lint-action's version
+## input from this rather than hardcoding a second copy of the number, so the
+## workflow and this file cannot drift apart.
+print-golangci-lint-version:
+	@echo $(GOLANGCI_LINT_VERSION)
 
 ## Remove coverage files
 clean:
