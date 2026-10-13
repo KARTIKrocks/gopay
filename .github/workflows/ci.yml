@@ -16,6 +16,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  common-mk:
+    uses: KARTIKrocks/go-build-tools/.github/workflows/check-common-mk.yml@6023c2444c2dbaf87b4aba9570e98fae59caf242 # pinned; bump deliberately
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -115,6 +118,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
+          check-latest: true
       - name: Use local root module
         if: matrix.module != '.'
         working-directory: ${{ matrix.module }}
@@ -173,14 +177,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()
-    needs: [test, coverage, lint, vuln, docs-lint]
+    needs: [common-mk, test, coverage, lint, vuln, docs-lint]
     steps:
       - name: Verify every job succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
-          if echo "$NEEDS" | jq -e 'any(.[]; .result != "success")' >/dev/null; then
+          # common-mk only runs on pull requests, so a skip is expected on push.
+          if echo "$NEEDS" | jq -e 'to_entries | any(.[]; .value.result != "success" and (.key != "common-mk" or .value.result != "skipped"))' >/dev/null; then
             echo "::error::one or more CI jobs did not succeed"
             exit 1
           fi
