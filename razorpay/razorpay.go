@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -201,7 +202,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -233,7 +234,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
@@ -267,7 +268,7 @@ func (p *Provider) getPaymentByID(ctx context.Context, paymentID string) (*gopay
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -320,7 +321,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -375,11 +376,11 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, refundError(p.parseError(resp, respBody))
 	}
 
 	var refundResp razorpayRefund
@@ -407,11 +408,11 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, refundError(p.parseError(resp, respBody))
 	}
 
 	var refundResp razorpayRefund
@@ -456,7 +457,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -488,7 +489,7 @@ func (p *Provider) GetCustomer(ctx context.Context, customerID string) (*gopay.C
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -533,7 +534,7 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -785,7 +786,7 @@ func (p *Provider) doJSON(ctx context.Context, method, path string, reqBody any)
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, p.parseError(resp, respBody)
@@ -987,7 +988,7 @@ func (p *Provider) doListRequest(ctx context.Context, path string, skip, count i
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -1350,6 +1351,16 @@ func (p *Provider) parseError(resp *http.Response, body []byte) error {
 		}
 	}
 	return perr
+}
+
+// refundError reclassifies the generic ErrPaymentFailed that parseError gives
+// a BAD_REQUEST_ERROR as ErrRefundFailed, for errors from a refund endpoint.
+// More specific kinds, such as ErrInvalidAmount, are kept.
+func refundError(err error) error {
+	if perr, ok := errors.AsType[*gopay.Error](err); ok && perr.Kind == gopay.ErrPaymentFailed { //nolint:errorlint // identity: only the generic kind
+		perr.Kind = gopay.ErrRefundFailed
+	}
+	return err
 }
 
 // transportError classifies a failed HTTP round trip as

@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"net"
 	"net/http"
-	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1256,10 +1259,30 @@ func mapPaymentMethodType(t stripe.PaymentMethodType) gopay.PaymentMethodType {
 //
 // A Stripe API error keeps its status, codes, and request ID, and still
 // unwraps to the *stripe.Error. A transport failure becomes
-// ErrProviderUnavailable, unless ctx is done: then the caller gave up, and the
-// error is returned as is so it still matches context.Canceled or
-// context.DeadlineExceeded. Any other error is returned unchanged.
+// ErrProviderUnavailable. Once ctx is done, a transient failure is reported
+// as the context error instead, so it matches context.Canceled or
+// context.DeadlineExceeded: stripe-go stops retrying when ctx is done and
+// returns the last attempt's error. A definitive answer such as a decline
+// still stands. Any other error is returned unchanged.
 func (p *Provider) mapError(ctx context.Context, err error) error {
+	perr := p.providerError(err)
+	if perr == nil {
+		return err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil && gopay.IsRetryable(perr) {
+		return fmt.Errorf("%w (last provider error: %s)", ctxErr, perr.Error())
+	}
+	return perr
+}
+
+// undecodableStatus extracts the HTTP status from the untyped error stripe-go
+// returns when a response body is not JSON, such as an HTML page from a proxy
+// in front of the API. TestMapErrorNonJSONResponse guards the message format.
+var undecodableStatus = regexp.MustCompile(`^Couldn't deserialize JSON \(response status: (\d{3}),`)
+
+// providerError classifies err, or returns nil when it did not come from the
+// provider or the network.
+func (p *Provider) providerError(err error) *gopay.Error {
 	if stripeErr, ok := errors.AsType[*stripe.Error](err); ok {
 		code := string(stripeErr.Code)
 		if stripeErr.DeclineCode != "" {
@@ -1275,13 +1298,22 @@ func (p *Provider) mapError(ctx context.Context, err error) error {
 			Err:        stripeErr,
 		}
 	}
-	if _, ok := errors.AsType[*url.Error](err); ok {
-		if ctx.Err() != nil {
-			return err
+	if m := undecodableStatus.FindStringSubmatch(err.Error()); m != nil {
+		status, _ := strconv.Atoi(m[1])
+		return &gopay.Error{
+			Kind:       gopay.KindForStatus(status),
+			Provider:   p.Name(),
+			StatusCode: status,
+			Message:    "unparseable provider response",
+			Err:        err,
 		}
+	}
+	// net.Error covers failed round trips (*url.Error); a connection dropped
+	// while reading the body surfaces as io.ErrUnexpectedEOF.
+	if _, ok := errors.AsType[net.Error](err); ok || errors.Is(err, io.ErrUnexpectedEOF) {
 		return &gopay.Error{Kind: gopay.ErrProviderUnavailable, Provider: p.Name(), Err: err}
 	}
-	return err
+	return nil
 }
 
 // stripeErrorKind classifies a Stripe API error. The decline code is checked
@@ -1293,9 +1325,13 @@ func stripeErrorKind(e *stripe.Error) error {
 		return gopay.ErrInsufficientFunds
 	case stripe.DeclineCodeExpiredCard:
 		return gopay.ErrExpiredCard
+	case stripe.DeclineCodeAuthenticationRequired:
+		return gopay.ErrAuthenticationRequired
 	}
 
 	switch e.Code {
+	case stripe.ErrorCodeAuthenticationRequired:
+		return gopay.ErrAuthenticationRequired
 	case stripe.ErrorCodeCardDeclined:
 		return gopay.ErrCardDeclined
 	case stripe.ErrorCodeExpiredCard:

@@ -33,9 +33,13 @@ whether they are transient and carry the provider's diagnostics.
 ### Changed
 
 - **Stripe, PayPal, Razorpay**: provider errors are classified by HTTP status
-  first: 401/403 → `ErrInvalidCredentials`, 429 → `ErrRateLimited`, 5xx →
+  first: 401 → `ErrInvalidCredentials`, 429 → `ErrRateLimited`, 5xx →
   `ErrProviderUnavailable`. These all still match `ErrProviderError`, which is
-  what they were reported as before.
+  what they were reported as before. A 403 stays `ErrProviderError`: it
+  usually means the key lacks permission for the operation, not that it is
+  invalid. A 5xx with a non-JSON body (e.g. from a proxy) is classified too.
+- **Stripe, PayPal, Razorpay**: a connection dropped while reading the response
+  body is `ErrProviderUnavailable`, like any other network failure.
 - **PayPal, Razorpay**: a network failure (no response received) is now
   `ErrProviderUnavailable`. **Behaviour change**: it previously matched
   `ErrPaymentFailed` or `ErrRefundFailed` on some calls and was unclassified on
@@ -45,6 +49,9 @@ whether they are transient and carry the provider's diagnostics.
 - **Stripe, PayPal, Razorpay**: when the caller's `ctx` is canceled or past its
   deadline, the context error is returned as is (matching `context.Canceled` or
   `context.DeadlineExceeded`) instead of being wrapped as a provider failure.
+- **PayPal, Razorpay**: a refund the provider rejects (e.g. amount exceeds the
+  capture) now matches `ErrRefundFailed` instead of `ErrPaymentFailed`,
+  consistent with the mock provider.
 - **Razorpay**: `BAD_REQUEST_ERROR` with HTTP 401, 404, or 429 now maps to
   `ErrInvalidCredentials`, `ErrNotFound`, or `ErrRateLimited` instead of
   `ErrPaymentFailed`.
@@ -55,6 +62,12 @@ whether they are transient and carry the provider's diagnostics.
   `ErrInsufficientFunds` / `ErrExpiredCard`. Stripe reports these as code
   `card_declined` with the reason in `decline_code`, which was ignored, so they
   only ever matched `ErrCardDeclined`.
+- **Stripe**: a payment that needs 3D Secure now matches
+  `ErrAuthenticationRequired`; Stripe's `authentication_required` code was
+  unmapped.
+- **PayPal**: a 401 on an API call drops the cached access token, so a token
+  PayPal revoked before its expiry is replaced on the next call instead of
+  failing every call for up to its full lifetime.
 - **PayPal**: a rejected OAuth token request now reports
   `ErrInvalidCredentials` with PayPal's error description, instead of a generic
   `ErrProviderError: failed to get access token`.

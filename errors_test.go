@@ -29,6 +29,7 @@ func TestErrorMessage(t *testing.T) {
 		{"kind and message", &Error{Kind: ErrCardDeclined, Message: "Your card was declined."}, "gopay: card declined: Your card was declined."},
 		{"message preferred over cause", &Error{Kind: ErrProviderUnavailable, Message: "upstream down", Err: cause}, "gopay: provider error: provider unavailable: upstream down"},
 		{"cause when no message", &Error{Kind: ErrProviderUnavailable, Err: cause}, "gopay: provider error: provider unavailable: connection reset"},
+		{"code when no message or cause", &Error{Kind: ErrPaymentFailed, Code: "BAD_REQUEST_ERROR"}, "gopay: payment failed: BAD_REQUEST_ERROR"},
 		{"kind only", &Error{Kind: ErrNotFound}, "gopay: not found"},
 		{"nil kind defaults", &Error{Message: "boom"}, "gopay: provider error: boom"},
 	}
@@ -132,7 +133,7 @@ func TestKindForStatus(t *testing.T) {
 		{http.StatusBadRequest, ErrProviderError},
 		{http.StatusUnauthorized, ErrInvalidCredentials},
 		{http.StatusPaymentRequired, ErrProviderError},
-		{http.StatusForbidden, ErrInvalidCredentials},
+		{http.StatusForbidden, ErrProviderError},
 		{http.StatusNotFound, ErrNotFound},
 		{http.StatusRequestTimeout, ErrProviderUnavailable},
 		{http.StatusConflict, ErrProviderError},
@@ -175,6 +176,7 @@ func TestParseRetryAfter(t *testing.T) {
 		{"clamped", "999999999999", 24 * time.Hour},
 		{"http date future", now.Add(90 * time.Second).Format(http.TimeFormat), 90 * time.Second},
 		{"http date past", now.Add(-time.Minute).Format(http.TimeFormat), 0},
+		{"http date clamped", now.AddDate(73, 0, 0).Format(http.TimeFormat), 24 * time.Hour},
 		{"malformed", "soon", 0},
 	}
 	for _, tt := range tests {

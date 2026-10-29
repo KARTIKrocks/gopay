@@ -3,13 +3,17 @@ package stripe
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
 
 	"github.com/KARTIKrocks/gopay"
 	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/client"
 )
 
 func TestNewProviderValidation(t *testing.T) {
@@ -182,6 +186,8 @@ func TestMapError(t *testing.T) {
 		{"decline code insufficient funds", stripe.ErrorCodeCardDeclined, stripe.DeclineCodeInsufficientFunds, http.StatusPaymentRequired, gopay.ErrInsufficientFunds},
 		{"decline code expired card", stripe.ErrorCodeCardDeclined, stripe.DeclineCodeExpiredCard, http.StatusPaymentRequired, gopay.ErrExpiredCard},
 		{"unmapped decline code", stripe.ErrorCodeCardDeclined, "do_not_honor", http.StatusPaymentRequired, gopay.ErrCardDeclined},
+		{"decline code authentication required", stripe.ErrorCodeCardDeclined, stripe.DeclineCodeAuthenticationRequired, http.StatusPaymentRequired, gopay.ErrAuthenticationRequired},
+		{"authentication required code", stripe.ErrorCodeAuthenticationRequired, "", http.StatusPaymentRequired, gopay.ErrAuthenticationRequired},
 		{"expired card", stripe.ErrorCodeExpiredCard, "", http.StatusPaymentRequired, gopay.ErrExpiredCard},
 		{"insufficient funds", stripe.ErrorCodeInsufficientFunds, "", http.StatusBadRequest, gopay.ErrInsufficientFunds},
 		{"incorrect number", stripe.ErrorCodeIncorrectNumber, "", http.StatusPaymentRequired, gopay.ErrInvalidCard},
@@ -256,7 +262,7 @@ func TestMapErrorTransport(t *testing.T) {
 	cancel()
 	canceledErr := &url.Error{Op: "Post", URL: "https://api.stripe.com", Err: context.Canceled}
 	got = p.mapError(ctx, canceledErr)
-	if got != canceledErr || gopay.IsRetryable(got) {
+	if !errors.Is(got, context.Canceled) || gopay.IsRetryable(got) {
 		t.Errorf("canceled error = %v, want it passed through", got)
 	}
 
@@ -741,5 +747,60 @@ func TestVerifyWebhookErrors(t *testing.T) {
 	}
 	if !errors.Is(err, gopay.ErrProviderError) {
 		t.Errorf("expected ErrProviderError for invalid sig, got %v", err)
+	}
+}
+
+func TestMapErrorAfterContextDone(t *testing.T) {
+	p := &Provider{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// stripe-go returns the last attempt's error once ctx is done. A transient
+	// one must surface as the cancellation, not as a retryable outage.
+	transient := &stripe.Error{HTTPStatusCode: http.StatusServiceUnavailable, Msg: "unavailable"}
+	got := p.mapError(ctx, transient)
+	if !errors.Is(got, context.Canceled) || gopay.IsRetryable(got) {
+		t.Errorf("transient after cancel = %v, want non-retryable context.Canceled", got)
+	}
+
+	// A definitive answer still stands: the card really was declined.
+	declined := &stripe.Error{Code: stripe.ErrorCodeCardDeclined, HTTPStatusCode: http.StatusPaymentRequired, Msg: "declined"}
+	if got := p.mapError(ctx, declined); !errors.Is(got, gopay.ErrCardDeclined) {
+		t.Errorf("decline after cancel = %v, want ErrCardDeclined", got)
+	}
+}
+
+func TestMapErrorBodyReadFailure(t *testing.T) {
+	p := &Provider{}
+	got := p.mapError(context.Background(), fmt.Errorf("read body: %w", io.ErrUnexpectedEOF))
+	if !errors.Is(got, gopay.ErrProviderUnavailable) {
+		t.Errorf("body read failure = %v, want ErrProviderUnavailable", got)
+	}
+}
+
+// TestMapErrorNonJSONResponse runs the real SDK against a server that answers
+// like a proxy in front of Stripe. It pins the untyped error format that
+// undecodableStatus parses, so an SDK upgrade that changes it fails here.
+func TestMapErrorNonJSONResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("<html>502 Bad Gateway</html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	backend := stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
+		URL:               stripe.String(srv.URL),
+		MaxNetworkRetries: stripe.Int64(0),
+		LeveledLogger:     &stripe.LeveledLogger{Level: stripe.LevelNull},
+	})
+	p := &Provider{api: client.New("sk_test_123", &stripe.Backends{API: backend, Uploads: backend})}
+
+	_, err := p.GetPayment(context.Background(), "pi_123")
+	if !errors.Is(err, gopay.ErrProviderUnavailable) {
+		t.Fatalf("GetPayment() = %v, want ErrProviderUnavailable", err)
+	}
+	if perr, _ := errors.AsType[*gopay.Error](err); perr.StatusCode != http.StatusBadGateway {
+		t.Errorf("StatusCode = %d, want 502", perr.StatusCode)
 	}
 }

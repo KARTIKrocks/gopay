@@ -44,7 +44,7 @@ var (
 	ErrProviderUnavailable = fmt.Errorf("%w: provider unavailable", ErrProviderError)
 
 	// ErrInvalidCredentials reports that the provider rejected the configured
-	// API credentials (HTTP 401 or 403). Retrying will not help.
+	// API credentials (HTTP 401). Retrying will not help.
 	ErrInvalidCredentials = fmt.Errorf("%w: invalid credentials", ErrProviderError)
 )
 
@@ -99,7 +99,8 @@ type Error struct {
 }
 
 // Error returns the Kind's message followed by the provider's message, for
-// example "gopay: card declined: Your card was declined.".
+// example "gopay: card declined: Your card was declined.". Without a message
+// it falls back to the underlying cause, then to the provider's code.
 func (e *Error) Error() string {
 	msg := e.kind().Error()
 	switch {
@@ -107,6 +108,8 @@ func (e *Error) Error() string {
 		return msg + ": " + e.Message
 	case e.Err != nil:
 		return msg + ": " + e.Err.Error()
+	case e.Code != "":
+		return msg + ": " + e.Code
 	default:
 		return msg
 	}
@@ -149,16 +152,18 @@ func RetryAfter(err error) time.Duration {
 }
 
 // KindForStatus returns the default error Kind for an HTTP status code from a
-// provider: [ErrInvalidCredentials] for 401 and 403, [ErrNotFound] for 404,
+// provider: [ErrInvalidCredentials] for 401, [ErrNotFound] for 404,
 // [ErrRateLimited] for 429, [ErrProviderUnavailable] for 408 and for 5xx other
-// than 501 and 505, and [ErrProviderError] for anything else.
+// than 501 and 505, and [ErrProviderError] for anything else. A 403 is
+// ErrProviderError: it usually means the credentials are valid but lack
+// permission for the operation, so it must not prompt a key rotation.
 //
 // It is a helper for [Provider] implementations, which should prefer a more
 // specific Kind when the provider's error code identifies one, such as a
 // card decline.
 func KindForStatus(status int) error {
 	switch {
-	case status == http.StatusUnauthorized, status == http.StatusForbidden:
+	case status == http.StatusUnauthorized:
 		return ErrInvalidCredentials
 	case status == http.StatusNotFound:
 		return ErrNotFound
@@ -176,9 +181,14 @@ func KindForStatus(status int) error {
 	}
 }
 
+// maxRetryAfter caps the wait ParseRetryAfter reports.
+const maxRetryAfter = 24 * time.Hour
+
 // ParseRetryAfter parses the value of an HTTP Retry-After header, given either
 // as delay-seconds or as an HTTP date relative to now. It returns 0 for an
-// empty or malformed value, and for a date that is not in the future.
+// empty or malformed value, and for a date that is not in the future. The
+// result is capped at 24 hours, so a misbehaving server cannot stall a caller
+// that sleeps for it.
 //
 // It is a helper for [Provider] implementations filling [Error.RetryAfter].
 func ParseRetryAfter(value string, now time.Time) time.Duration {
@@ -190,13 +200,12 @@ func ParseRetryAfter(value string, now time.Time) time.Duration {
 		if secs <= 0 {
 			return 0
 		}
-		// Clamp absurd values instead of overflowing time.Duration.
-		const maxSecs = int64(24 * time.Hour / time.Second)
-		return time.Duration(min(secs, maxSecs)) * time.Second
+		// Clamp before converting, so absurd values cannot overflow Duration.
+		return time.Duration(min(secs, int64(maxRetryAfter/time.Second))) * time.Second
 	}
 	if at, err := http.ParseTime(value); err == nil {
 		if d := at.Sub(now); d > 0 {
-			return d
+			return min(d, maxRetryAfter)
 		}
 	}
 	return 0

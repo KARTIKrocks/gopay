@@ -47,7 +47,7 @@ matches through the wrapping.
 | `ErrProviderError` | An unmapped provider-side error |
 | `ErrRateLimited` | The provider throttled the request (HTTP 429). Transient |
 | `ErrProviderUnavailable` | Network failure, timeout, or provider 5xx. Transient |
-| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401/403) |
+| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401) |
 | `ErrUnsupported` | The provider doesn't implement the optional capability called |
 
 `ErrRateLimited`, `ErrProviderUnavailable`, and `ErrInvalidCredentials` are
@@ -95,7 +95,7 @@ if errors.As(err, &perr) {
 | `Code` | The provider's most specific code (Stripe's decline code, PayPal's issue, Razorpay's error code) — for logs, not control flow |
 | `Message` | The provider's human-readable message |
 | `RequestID` | Stripe's request ID or PayPal's debug ID, when available |
-| `RetryAfter` | The provider's `Retry-After` hint, or 0 |
+| `RetryAfter` | The provider's `Retry-After` hint, or 0. PayPal and Razorpay only: stripe-go does not expose response headers |
 | `Err` | The underlying cause: the SDK error or network error |
 
 Validation errors raised by gopay before any provider call are plain sentinels,
@@ -119,7 +119,7 @@ if errors.Is(err, payment.ErrUnsupported) {
 Each provider package implements its own unexported error-translation method
 — `mapError` in Stripe, `parseError` in PayPal and Razorpay — that returns a
 `*payment.Error`. Its `Kind` starts from the HTTP status via
-`payment.KindForStatus` (401/403 → `ErrInvalidCredentials`, 404 →
+`payment.KindForStatus` (401 → `ErrInvalidCredentials`, 404 →
 `ErrNotFound`, 429 → `ErrRateLimited`, 5xx → `ErrProviderUnavailable`, else
 `ErrProviderError`) and is refined by the provider's own decline or error
 code. A decline is never classified as transient, whatever status accompanies

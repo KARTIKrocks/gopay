@@ -1046,3 +1046,54 @@ func TestCancelPaymentHTTP(t *testing.T) {
 		t.Errorf("Status = %s, want canceled", pay.Status)
 	}
 }
+
+func TestRefundErrorKind(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { // the capture lookup Refund does first
+			_, _ = w.Write([]byte(`{"id":"ORDER-001","status":"COMPLETED","purchase_units":[{"amount":{"currency_code":"USD","value":"19.99"},"payments":{"captures":[{"id":"CAP-001","status":"COMPLETED","amount":{"currency_code":"USD","value":"19.99"}}]}}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"REFUND_AMOUNT_EXCEEDED","description":"too much"}]}`))
+	})
+
+	_, err := p.Refund(context.Background(), gopay.NewRefundRequest("ORDER-001"))
+	if !errors.Is(err, gopay.ErrRefundFailed) || errors.Is(err, gopay.ErrPaymentFailed) {
+		t.Errorf("Refund() = %v, want ErrRefundFailed only", err)
+	}
+}
+
+func TestRefundErrorKeepsSpecificKind(t *testing.T) {
+	err := refundError(&gopay.Error{Kind: gopay.ErrAlreadyRefunded})
+	if !errors.Is(err, gopay.ErrAlreadyRefunded) {
+		t.Errorf("refundError() = %v, want ErrAlreadyRefunded kept", err)
+	}
+}
+
+func TestUnauthorizedDropsCachedToken(t *testing.T) {
+	tokenFetches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/oauth2/token" {
+			tokenFetches++
+			_, _ = w.Write([]byte(tokenResponse))
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"name":"AUTHENTICATION_FAILURE","message":"token revoked"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := NewProvider(Config{ClientID: "id", ClientSecret: "secret", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	for range 2 {
+		if _, err := p.GetPayment(context.Background(), "ORDER-1"); !errors.Is(err, gopay.ErrInvalidCredentials) {
+			t.Fatalf("GetPayment() = %v, want ErrInvalidCredentials", err)
+		}
+	}
+	if tokenFetches != 2 {
+		t.Errorf("token fetches = %d, want 2: a 401 must drop the cached token", tokenFetches)
+	}
+}

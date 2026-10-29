@@ -1156,3 +1156,20 @@ func TestCreatePaymentCanceledContext(t *testing.T) {
 		t.Errorf("a canceled call must not be retryable: %v", err)
 	}
 }
+
+func TestRefundErrorKind(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"The payment has been fully refunded already"}}`))
+	})
+
+	_, err := p.Refund(context.Background(), gopay.NewRefundRequest("pay_123"))
+	if !errors.Is(err, gopay.ErrRefundFailed) || errors.Is(err, gopay.ErrPaymentFailed) {
+		t.Errorf("Refund() = %v, want ErrRefundFailed only", err)
+	}
+
+	// A more specific kind is kept.
+	if err := refundError(&gopay.Error{Kind: gopay.ErrInvalidAmount}); !errors.Is(err, gopay.ErrInvalidAmount) {
+		t.Errorf("refundError() = %v, want ErrInvalidAmount kept", err)
+	}
+}

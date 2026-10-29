@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -279,11 +280,11 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	var o order
@@ -316,11 +317,11 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	var o order
@@ -397,11 +398,11 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	var o order
@@ -430,11 +431,11 @@ func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (s
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return "", err
+		return "", p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return "", p.parseError(resp, respBody)
+		return "", p.apiError(resp, respBody)
 	}
 
 	var o order
@@ -484,11 +485,11 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	// Fetch the full order to return a complete Payment.
@@ -529,7 +530,7 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	pay.Status = gopay.PaymentStatusCanceled
@@ -595,11 +596,11 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, refundError(p.apiError(resp, respBody))
 	}
 
 	var refundResp refund
@@ -632,11 +633,11 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, refundError(p.apiError(resp, respBody))
 	}
 
 	var refundResp refund
@@ -719,11 +720,11 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(resp, respBody)
+		return nil, p.apiError(resp, respBody)
 	}
 
 	var verifyResp struct {
@@ -847,7 +848,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return "", err
+		return "", p.transportError(ctx, err)
 	}
 
 	if resp.StatusCode >= 400 {
@@ -1039,6 +1040,30 @@ func issueKind(issue string) error {
 	default:
 		return nil
 	}
+}
+
+// apiError is parseError for API calls. A 401 there means PayPal no longer
+// accepts the cached access token, which it can revoke before expires_in, so
+// the token is dropped and the next call fetches a fresh one instead of
+// failing until the cached expiry. The token endpoint calls parseError
+// directly, because it runs with p.mu held.
+func (p *Provider) apiError(resp *http.Response, body []byte) error {
+	if resp.StatusCode == http.StatusUnauthorized {
+		p.mu.Lock()
+		p.accessToken = ""
+		p.mu.Unlock()
+	}
+	return p.parseError(resp, body)
+}
+
+// refundError reclassifies the generic ErrPaymentFailed that parseError gives
+// an unprocessable request as ErrRefundFailed, for errors from a refund
+// endpoint. More specific kinds, such as ErrAlreadyRefunded, are kept.
+func refundError(err error) error {
+	if perr, ok := errors.AsType[*gopay.Error](err); ok && perr.Kind == gopay.ErrPaymentFailed { //nolint:errorlint // identity: only the generic kind
+		perr.Kind = gopay.ErrRefundFailed
+	}
+	return err
 }
 
 // transportError classifies a failed HTTP round trip as
