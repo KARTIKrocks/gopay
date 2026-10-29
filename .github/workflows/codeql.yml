@@ -45,27 +45,24 @@ jobs:
         with:
           go-version: "1.27"
 
+      # `source-root` scopes extraction to this module's directory. The provider
+      # jobs build against the root module's local source (below), and without
+      # this the root's files would sit inside the source root and be extracted
+      # by every job, reporting each root-module finding four times over. With
+      # it, ../ is outside the source root, so only the "." job scans the root.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.39.1
         with:
           languages: go
+          source-root: ${{ matrix.module }}
 
-      # Note the absence of the `go mod edit -replace` that ci.yml uses here.
-      # That replace exists to catch API drift at compile time, which is a test
-      # concern. Doing it here would pull the root module's source into this
-      # job's source root too, so every root-module finding would be reported
-      # four times over, once per module category. Building each provider
-      # sub-module against its pinned gopay release keeps the root out of scope
-      # for the three provider jobs, where the "." job already covers it.
-      #
-      # GOWORK=off is load-bearing: the committed root go.work (see its header
-      # comment) auto-activates for any `go` command run under stripe/, paypal/,
-      # or razorpay/, which would silently resolve gopay back to local source
-      # and reintroduce the duplicate-findings problem this step exists to avoid.
+      # Built through the committed go.work (see its header comment), so each
+      # provider compiles against the root module's working tree, as in ci.yml.
+      # Building against the pinned gopay release instead (GOWORK=off) fails
+      # every PR that adds root API and uses it from a provider: the providers
+      # can only require that API once it has been released.
       - name: Build
         working-directory: ${{ matrix.module }}
-        env:
-          GOWORK: "off"
         run: go build ./...
 
       - name: Perform CodeQL Analysis
