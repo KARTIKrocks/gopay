@@ -3,6 +3,8 @@ package stripe
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -170,37 +172,96 @@ func TestMapError(t *testing.T) {
 	p := &Provider{}
 
 	tests := []struct {
-		name    string
-		code    stripe.ErrorCode
-		wantErr error
+		name        string
+		code        stripe.ErrorCode
+		declineCode stripe.DeclineCode
+		status      int
+		wantErr     error
 	}{
-		{"card declined", stripe.ErrorCodeCardDeclined, gopay.ErrCardDeclined},
-		{"expired card", stripe.ErrorCodeExpiredCard, gopay.ErrExpiredCard},
-		{"insufficient funds", stripe.ErrorCodeInsufficientFunds, gopay.ErrInsufficientFunds},
-		{"incorrect number", stripe.ErrorCodeIncorrectNumber, gopay.ErrInvalidCard},
-		{"resource missing", stripe.ErrorCodeResourceMissing, gopay.ErrNotFound},
-		{"already refunded", stripe.ErrorCodeChargeAlreadyRefunded, gopay.ErrAlreadyRefunded},
-		{"already captured", stripe.ErrorCodeChargeAlreadyCaptured, gopay.ErrAlreadyCaptured},
-		{"unknown code", "some_other_code", gopay.ErrProviderError},
+		{"card declined", stripe.ErrorCodeCardDeclined, "", http.StatusPaymentRequired, gopay.ErrCardDeclined},
+		{"decline code insufficient funds", stripe.ErrorCodeCardDeclined, stripe.DeclineCodeInsufficientFunds, http.StatusPaymentRequired, gopay.ErrInsufficientFunds},
+		{"decline code expired card", stripe.ErrorCodeCardDeclined, stripe.DeclineCodeExpiredCard, http.StatusPaymentRequired, gopay.ErrExpiredCard},
+		{"unmapped decline code", stripe.ErrorCodeCardDeclined, "do_not_honor", http.StatusPaymentRequired, gopay.ErrCardDeclined},
+		{"expired card", stripe.ErrorCodeExpiredCard, "", http.StatusPaymentRequired, gopay.ErrExpiredCard},
+		{"insufficient funds", stripe.ErrorCodeInsufficientFunds, "", http.StatusBadRequest, gopay.ErrInsufficientFunds},
+		{"incorrect number", stripe.ErrorCodeIncorrectNumber, "", http.StatusPaymentRequired, gopay.ErrInvalidCard},
+		{"resource missing", stripe.ErrorCodeResourceMissing, "", http.StatusNotFound, gopay.ErrNotFound},
+		{"already refunded", stripe.ErrorCodeChargeAlreadyRefunded, "", http.StatusBadRequest, gopay.ErrAlreadyRefunded},
+		{"already captured", stripe.ErrorCodeChargeAlreadyCaptured, "", http.StatusBadRequest, gopay.ErrAlreadyCaptured},
+		{"rate limit code", stripe.ErrorCodeRateLimit, "", http.StatusTooManyRequests, gopay.ErrRateLimited},
+		{"rate limit status only", "", "", http.StatusTooManyRequests, gopay.ErrRateLimited},
+		{"server error", "", "", http.StatusInternalServerError, gopay.ErrProviderUnavailable},
+		{"bad api key", "", "", http.StatusUnauthorized, gopay.ErrInvalidCredentials},
+		{"unknown code", "some_other_code", "", http.StatusBadRequest, gopay.ErrProviderError},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stripeErr := &stripe.Error{
-				Code: tt.code,
-				Msg:  "test message",
+				Code:           tt.code,
+				DeclineCode:    tt.declineCode,
+				HTTPStatusCode: tt.status,
+				Msg:            "test message",
 			}
-			got := p.mapError(stripeErr)
+			got := p.mapError(context.Background(), stripeErr)
 			if !errors.Is(got, tt.wantErr) {
-				t.Errorf("mapError(%s) = %v, want %v", tt.code, got, tt.wantErr)
+				t.Errorf("mapError(%s/%s) = %v, want %v", tt.code, tt.declineCode, got, tt.wantErr)
 			}
 		})
 	}
+}
 
-	// Non-stripe error should pass through
-	plainErr := errors.New("network error")
-	got := p.mapError(plainErr)
-	if got != plainErr {
+func TestMapErrorDetails(t *testing.T) {
+	p := &Provider{}
+	stripeErr := &stripe.Error{
+		Code:           stripe.ErrorCodeCardDeclined,
+		DeclineCode:    stripe.DeclineCodeInsufficientFunds,
+		HTTPStatusCode: http.StatusPaymentRequired,
+		Msg:            "Your card has insufficient funds.",
+		RequestID:      "req_123",
+	}
+
+	got := p.mapError(context.Background(), stripeErr)
+
+	perr, ok := errors.AsType[*gopay.Error](got)
+	if !ok {
+		t.Fatalf("mapError() = %T, want *gopay.Error", got)
+	}
+	if perr.Provider != "stripe" || perr.StatusCode != http.StatusPaymentRequired ||
+		perr.Code != "insufficient_funds" || perr.RequestID != "req_123" {
+		t.Errorf("unexpected details: %+v", perr)
+	}
+	if got.Error() != "gopay: insufficient funds: Your card has insufficient funds." {
+		t.Errorf("Error() = %q", got.Error())
+	}
+	if raw, ok := errors.AsType[*stripe.Error](got); !ok || raw != stripeErr {
+		t.Error("mapped error should still unwrap to the *stripe.Error")
+	}
+}
+
+func TestMapErrorTransport(t *testing.T) {
+	p := &Provider{}
+	netErr := &url.Error{Op: "Post", URL: "https://api.stripe.com", Err: errors.New("connection reset by peer")}
+
+	got := p.mapError(context.Background(), netErr)
+	if !errors.Is(got, gopay.ErrProviderUnavailable) || !gopay.IsRetryable(got) {
+		t.Errorf("transport error = %v, want retryable ErrProviderUnavailable", got)
+	}
+	if _, ok := errors.AsType[*url.Error](got); !ok {
+		t.Error("transport error should still unwrap to the *url.Error")
+	}
+
+	// A canceled caller context is the caller giving up, not an outage.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	canceledErr := &url.Error{Op: "Post", URL: "https://api.stripe.com", Err: context.Canceled}
+	got = p.mapError(ctx, canceledErr)
+	if got != canceledErr || gopay.IsRetryable(got) {
+		t.Errorf("canceled error = %v, want it passed through", got)
+	}
+
+	plainErr := errors.New("decode failure")
+	if got := p.mapError(context.Background(), plainErr); got != plainErr {
 		t.Errorf("mapError(plain) = %v, want %v", got, plainErr)
 	}
 }

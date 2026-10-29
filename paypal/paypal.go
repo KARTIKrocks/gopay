@@ -273,7 +273,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -283,7 +283,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var o order
@@ -310,7 +310,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -320,7 +320,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var o order
@@ -391,7 +391,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -401,7 +401,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var o order
@@ -424,7 +424,7 @@ func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (s
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
+		return "", p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -434,7 +434,7 @@ func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (s
 	}
 
 	if resp.StatusCode >= 400 {
-		return "", p.parseError(respBody)
+		return "", p.parseError(resp, respBody)
 	}
 
 	var o order
@@ -478,7 +478,7 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -488,7 +488,7 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	// Fetch the full order to return a complete Payment.
@@ -523,13 +523,13 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", gopay.ErrPaymentFailed, err)
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	pay.Status = gopay.PaymentStatusCanceled
@@ -589,7 +589,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", gopay.ErrRefundFailed, err)
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -599,7 +599,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var refundResp refund
@@ -626,7 +626,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -636,7 +636,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var refundResp refund
@@ -713,7 +713,7 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: webhook verification failed: %w", gopay.ErrProviderError, err)
+		return nil, p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -723,7 +723,7 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.parseError(respBody)
+		return nil, p.parseError(resp, respBody)
 	}
 
 	var verifyResp struct {
@@ -841,7 +841,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 
 	resp, err := p.config.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		return "", p.transportError(ctx, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -851,7 +851,7 @@ func (p *Provider) getAccessToken(ctx context.Context) (string, error) {
 	}
 
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("%w: failed to get access token", gopay.ErrProviderError)
+		return "", p.parseError(resp, body)
 	}
 
 	var tokenResp struct {
@@ -970,7 +970,20 @@ func mapRefundStatus(status string) gopay.RefundStatus {
 	}
 }
 
-func (p *Provider) parseError(body []byte) error {
+// parseError translates a PayPal error response into a *gopay.Error. The Kind
+// defaults to gopay.KindForStatus and is refined by the error name and, for
+// unprocessable requests, by the first detail's issue code, which carries the
+// specific reason such as a declined instrument. It also reads the OAuth error
+// shape ("error", "error_description") that the token endpoint returns.
+func (p *Provider) parseError(resp *http.Response, body []byte) error {
+	perr := &gopay.Error{
+		Kind:       gopay.KindForStatus(resp.StatusCode),
+		Provider:   p.Name(),
+		StatusCode: resp.StatusCode,
+		RequestID:  resp.Header.Get("Paypal-Debug-Id"),
+		RetryAfter: gopay.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()),
+	}
+
 	var errResp struct {
 		Name    string `json:"name"`
 		Message string `json:"message"`
@@ -978,25 +991,65 @@ func (p *Provider) parseError(body []byte) error {
 			Issue       string `json:"issue"`
 			Description string `json:"description"`
 		} `json:"details"`
+		OAuthError       string `json:"error"`
+		OAuthDescription string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		// A gateway in front of PayPal can answer with a non-JSON body; the
+		// status-derived Kind still classifies it.
+		perr.Message = "unparseable provider error response"
+		return perr
 	}
 
-	if err := json.Unmarshal(body, &errResp); err != nil {
-		return fmt.Errorf("%w: unparseable provider error response", gopay.ErrProviderError)
+	perr.Code, perr.Message = errResp.Name, errResp.Message
+	if perr.Code == "" {
+		perr.Code, perr.Message = errResp.OAuthError, errResp.OAuthDescription
 	}
 
 	switch errResp.Name {
-	case "RESOURCE_NOT_FOUND":
-		return fmt.Errorf("%w: %s", gopay.ErrNotFound, errResp.Message)
-	case "INVALID_RESOURCE_ID":
-		return fmt.Errorf("%w: %s", gopay.ErrNotFound, errResp.Message)
+	case "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID":
+		perr.Kind = gopay.ErrNotFound
+	case "RATE_LIMIT_REACHED":
+		perr.Kind = gopay.ErrRateLimited
 	case "UNPROCESSABLE_ENTITY":
+		perr.Kind = gopay.ErrPaymentFailed
 		if len(errResp.Details) > 0 {
-			return fmt.Errorf("%w: %s", gopay.ErrPaymentFailed, errResp.Details[0].Description)
+			detail := errResp.Details[0]
+			perr.Code, perr.Message = detail.Issue, detail.Description
+			if kind := issueKind(detail.Issue); kind != nil {
+				perr.Kind = kind
+			}
 		}
-		return fmt.Errorf("%w: %s", gopay.ErrPaymentFailed, errResp.Message)
-	default:
-		return fmt.Errorf("%w: %s", gopay.ErrProviderError, errResp.Message)
 	}
+	return perr
+}
+
+// issueKind maps a PayPal error-detail issue code to a gopay error Kind, or
+// returns nil when the issue has no more specific Kind than the error name.
+func issueKind(issue string) error {
+	switch issue {
+	case "INSTRUMENT_DECLINED", "TRANSACTION_REFUSED":
+		return gopay.ErrCardDeclined
+	case "CARD_EXPIRED":
+		return gopay.ErrExpiredCard
+	case "ORDER_ALREADY_CAPTURED":
+		return gopay.ErrAlreadyCaptured
+	case "CAPTURE_FULLY_REFUNDED":
+		return gopay.ErrAlreadyRefunded
+	default:
+		return nil
+	}
+}
+
+// transportError classifies a failed HTTP round trip as
+// ErrProviderUnavailable, unless ctx is done: then the caller gave up, and err
+// is returned as is so it still matches context.Canceled or
+// context.DeadlineExceeded.
+func (p *Provider) transportError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return err
+	}
+	return &gopay.Error{Kind: gopay.ErrProviderUnavailable, Provider: p.Name(), Err: err}
 }
 
 // PayPal request/response types

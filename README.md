@@ -386,8 +386,15 @@ if errors.Is(err, payment.ErrCardDeclined) {
     // handle insufficient funds
 } else if errors.Is(err, payment.ErrInvalidAmount) {
     // handle invalid amount
+} else if payment.IsRetryable(err) {
+    // rate limited or provider unavailable: safe to retry reads, and
+    // writes that carry an idempotency key
 }
 ```
+
+Errors from a provider call are a `*payment.Error` carrying the provider name,
+HTTP status, provider error code, and request ID — reach it with `errors.As`.
+See [Errors](https://kartikrocks.github.io/gopay/docs/errors) for details.
 
 ## Mock Provider for Testing
 
