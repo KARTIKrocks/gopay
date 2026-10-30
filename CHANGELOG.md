@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Adds a structured, retry-aware error taxonomy. Provider failures now say
+whether they are transient and carry the provider's diagnostics.
+
+### Added
+
+- **Core**: `*gopay.Error`, returned by every provider call that fails at the
+  provider. It carries `Kind` (the sentinel), `Provider`, `StatusCode`, `Code`,
+  `Message`, `RequestID`, `RetryAfter`, and the underlying `Err`, and unwraps
+  to both `Kind` and `Err`, so `errors.Is` and `errors.As` keep working.
+- **Core**: sentinels `ErrRateLimited`, `ErrProviderUnavailable`, and
+  `ErrInvalidCredentials`. Each wraps `ErrProviderError`, so existing
+  `errors.Is(err, gopay.ErrProviderError)` checks still match them.
+- **Core**: `IsRetryable(err)` and `RetryAfter(err)` to classify transient
+  failures, plus `KindForStatus` and `ParseRetryAfter` helpers for provider
+  implementations.
+- **Stripe**: errors expose the HTTP status, request ID, and decline code, and
+  remain reachable as `*stripe.Error` via `errors.As`.
+- **PayPal**: errors expose the HTTP status and `Paypal-Debug-Id`. Detail
+  issue codes are mapped: `INSTRUMENT_DECLINED` / `TRANSACTION_REFUSED` →
+  `ErrCardDeclined`, `CARD_EXPIRED` → `ErrExpiredCard`,
+  `ORDER_ALREADY_CAPTURED` → `ErrAlreadyCaptured`, `CAPTURE_FULLY_REFUNDED` →
+  `ErrAlreadyRefunded`.
+
+### Changed
+
+- **Stripe, PayPal, Razorpay**: provider errors are classified by HTTP status
+  first: 401 → `ErrInvalidCredentials`, 429 → `ErrRateLimited`, 5xx →
+  `ErrProviderUnavailable`. These all still match `ErrProviderError`, which is
+  what they were reported as before. A 403 stays `ErrProviderError`: it
+  usually means the key lacks permission for the operation, not that it is
+  invalid. A 5xx with a non-JSON body (e.g. from a proxy) is classified too.
+- **Stripe, PayPal, Razorpay**: a connection dropped while reading the response
+  body is `ErrProviderUnavailable`, like any other network failure.
+- **PayPal, Razorpay**: a network failure (no response received) is now
+  `ErrProviderUnavailable`. **Behaviour change**: it previously matched
+  `ErrPaymentFailed` or `ErrRefundFailed` on some calls and was unclassified on
+  others. Code that treated those as a definite failure must now check
+  `ErrProviderUnavailable` too — the outcome of a write is unknown when no
+  response arrived.
+- **Stripe, PayPal, Razorpay**: when the caller's `ctx` is canceled or past its
+  deadline, the context error is returned as is (matching `context.Canceled` or
+  `context.DeadlineExceeded`) instead of being wrapped as a provider failure.
+- **PayPal, Razorpay**: a refund the provider rejects (e.g. amount exceeds the
+  capture) now matches `ErrRefundFailed` instead of `ErrPaymentFailed`,
+  consistent with the mock provider.
+- **Razorpay**: `BAD_REQUEST_ERROR` with HTTP 401, 404, or 429 now maps to
+  `ErrInvalidCredentials`, `ErrNotFound`, or `ErrRateLimited` instead of
+  `ErrPaymentFailed`.
+
+### Fixed
+
+- **Stripe**: an insufficient-funds or expired-card decline now matches
+  `ErrInsufficientFunds` / `ErrExpiredCard`. Stripe reports these as code
+  `card_declined` with the reason in `decline_code`, which was ignored, so they
+  only ever matched `ErrCardDeclined`.
+- **Stripe**: a payment that needs 3D Secure now matches
+  `ErrAuthenticationRequired`; Stripe's `authentication_required` code was
+  unmapped.
+- **PayPal**: a 401 on an API call drops the cached access token, so a token
+  PayPal revoked before its expiry is replaced on the next call instead of
+  failing every call for up to its full lifetime.
+- **PayPal**: a rejected OAuth token request now reports
+  `ErrInvalidCredentials` with PayPal's error description, instead of a generic
+  `ErrProviderError: failed to get access token`.
+
 ## [0.9.0] - 2026-09-16
 
 Raises the minimum Go version and modernizes the toolchain. No public API

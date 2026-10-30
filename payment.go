@@ -21,27 +21,6 @@ var validCurrencies = map[string]bool{
 	"BDT": true, "PKR": true, "LKR": true, "MMK": true, "VND": true,
 }
 
-// Sentinel errors for payment operations.
-var (
-	ErrInvalidConfig          = errors.New("gopay: invalid configuration")
-	ErrInvalidAmount          = errors.New("gopay: invalid amount")
-	ErrInvalidCurrency        = errors.New("gopay: invalid currency")
-	ErrInvalidCard            = errors.New("gopay: invalid card")
-	ErrCardDeclined           = errors.New("gopay: card declined")
-	ErrInsufficientFunds      = errors.New("gopay: insufficient funds")
-	ErrExpiredCard            = errors.New("gopay: expired card")
-	ErrPaymentFailed          = errors.New("gopay: payment failed")
-	ErrRefundFailed           = errors.New("gopay: refund failed")
-	ErrSetupFailed            = errors.New("gopay: setup failed")
-	ErrSubscriptionFailed     = errors.New("gopay: subscription failed")
-	ErrNotFound               = errors.New("gopay: not found")
-	ErrAlreadyRefunded        = errors.New("gopay: already refunded")
-	ErrAlreadyCaptured        = errors.New("gopay: already captured")
-	ErrAuthenticationRequired = errors.New("gopay: authentication required")
-	ErrProviderError          = errors.New("gopay: provider error")
-	ErrUnsupported            = errors.New("gopay: operation not supported")
-)
-
 // Provider represents a payment provider.
 type Provider interface {
 	// Name returns the provider name.

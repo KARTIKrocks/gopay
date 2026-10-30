@@ -59,4 +59,9 @@
 //	if errors.Is(err, gopay.ErrCardDeclined) {
 //	    // handle declined card
 //	}
+//
+// Errors from a provider call are an [*Error], which also carries the
+// provider's status code, error code, and request ID. [IsRetryable] reports
+// whether a failure is transient ([ErrRateLimited], [ErrProviderUnavailable])
+// and [RetryAfter] returns the wait the provider requested.
 package gopay

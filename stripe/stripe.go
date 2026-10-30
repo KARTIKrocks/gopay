@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"net"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,7 +150,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	params.Context = ctx
 	pi, err := p.api.PaymentIntents.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPaymentIntent(pi), nil
@@ -158,7 +162,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 	params.Context = ctx
 	pi, err := p.api.PaymentIntents.Get(paymentID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPaymentIntent(pi), nil
@@ -175,7 +179,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amount 
 	params.Context = ctx
 	pi, err := p.api.PaymentIntents.Capture(paymentID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPaymentIntent(pi), nil
@@ -187,7 +191,7 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 	params.Context = ctx
 	pi, err := p.api.PaymentIntents.Cancel(paymentID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPaymentIntent(pi), nil
@@ -224,7 +228,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 	params.Context = ctx
 	r, err := p.api.Refunds.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapRefund(r), nil
@@ -236,7 +240,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 	params.Context = ctx
 	r, err := p.api.Refunds.Get(refundID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapRefund(r), nil
@@ -267,7 +271,7 @@ func (p *Provider) CreateCustomer(ctx context.Context, req *gopay.CustomerReques
 	params.Context = ctx
 	c, err := p.api.Customers.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapCustomer(c), nil
@@ -279,7 +283,7 @@ func (p *Provider) GetCustomer(ctx context.Context, customerID string) (*gopay.C
 	params.Context = ctx
 	c, err := p.api.Customers.Get(customerID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapCustomer(c), nil
@@ -310,7 +314,7 @@ func (p *Provider) UpdateCustomer(ctx context.Context, customerID string, req *g
 	params.Context = ctx
 	c, err := p.api.Customers.Update(customerID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapCustomer(c), nil
@@ -322,7 +326,7 @@ func (p *Provider) DeleteCustomer(ctx context.Context, customerID string) error 
 	params.Context = ctx
 	_, err := p.api.Customers.Del(customerID, params)
 	if err != nil {
-		return p.mapError(err)
+		return p.mapError(ctx, err)
 	}
 	return nil
 }
@@ -335,7 +339,7 @@ func (p *Provider) AttachPaymentMethod(ctx context.Context, customerID, paymentM
 	params.Context = ctx
 	_, err := p.api.PaymentMethods.Attach(paymentMethodID, params)
 	if err != nil {
-		return p.mapError(err)
+		return p.mapError(ctx, err)
 	}
 	return nil
 }
@@ -346,7 +350,7 @@ func (p *Provider) DetachPaymentMethod(ctx context.Context, paymentMethodID stri
 	params.Context = ctx
 	_, err := p.api.PaymentMethods.Detach(paymentMethodID, params)
 	if err != nil {
-		return p.mapError(err)
+		return p.mapError(ctx, err)
 	}
 	return nil
 }
@@ -367,7 +371,7 @@ func (p *Provider) ListPaymentMethods(ctx context.Context, customerID string) ([
 	}
 
 	if err := iter.Err(); err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return methods, nil
@@ -417,7 +421,7 @@ func (p *Provider) CreateSetupIntent(ctx context.Context, req *gopay.SetupIntent
 	params.Context = ctx
 	si, err := p.api.SetupIntents.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSetupIntent(si), nil
@@ -429,7 +433,7 @@ func (p *Provider) GetSetupIntent(ctx context.Context, setupIntentID string) (*g
 	params.Context = ctx
 	si, err := p.api.SetupIntents.Get(setupIntentID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSetupIntent(si), nil
@@ -441,7 +445,7 @@ func (p *Provider) CancelSetupIntent(ctx context.Context, setupIntentID string) 
 	params.Context = ctx
 	si, err := p.api.SetupIntents.Cancel(setupIntentID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSetupIntent(si), nil
@@ -490,7 +494,7 @@ func (p *Provider) CreatePlan(ctx context.Context, req *gopay.PlanRequest) (*gop
 	params.Context = ctx
 	price, err := p.api.Prices.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPlan(price), nil
@@ -505,7 +509,7 @@ func (p *Provider) GetPlan(ctx context.Context, planID string) (*gopay.Plan, err
 	params.Context = ctx
 	price, err := p.api.Prices.Get(planID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapPlan(price), nil
@@ -547,7 +551,7 @@ func (p *Provider) CreateSubscription(ctx context.Context, req *gopay.Subscripti
 	params.Context = ctx
 	sub, err := p.api.Subscriptions.New(params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSubscription(sub), nil
@@ -559,7 +563,7 @@ func (p *Provider) GetSubscription(ctx context.Context, subscriptionID string) (
 	params.Context = ctx
 	sub, err := p.api.Subscriptions.Get(subscriptionID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSubscription(sub), nil
@@ -571,7 +575,7 @@ func (p *Provider) GetInvoice(ctx context.Context, invoiceID string) (*gopay.Inv
 	params.Context = ctx
 	inv, err := p.api.Invoices.Get(invoiceID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapInvoice(inv), nil
@@ -643,7 +647,7 @@ func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string
 		params.Context = ctx
 		sub, err := p.api.Subscriptions.Update(subscriptionID, params)
 		if err != nil {
-			return nil, p.mapError(err)
+			return nil, p.mapError(ctx, err)
 		}
 		return p.mapSubscription(sub), nil
 	}
@@ -652,7 +656,7 @@ func (p *Provider) CancelSubscription(ctx context.Context, subscriptionID string
 	params.Context = ctx
 	sub, err := p.api.Subscriptions.Cancel(subscriptionID, params)
 	if err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 
 	return p.mapSubscription(sub), nil
@@ -670,7 +674,7 @@ func (p *Provider) ListPayments(ctx context.Context, params *gopay.ListParams) (
 		items = append(items, p.mapPaymentIntent(iter.PaymentIntent()))
 	}
 	if err := iter.Err(); err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 	return buildStripeList(items, iter.Meta(), func(x *gopay.Payment) string { return x.ID }), nil
 }
@@ -687,7 +691,7 @@ func (p *Provider) ListRefunds(ctx context.Context, params *gopay.ListParams) (*
 		items = append(items, p.mapRefund(iter.Refund()))
 	}
 	if err := iter.Err(); err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 	return buildStripeList(items, iter.Meta(), func(x *gopay.Refund) string { return x.ID }), nil
 }
@@ -704,7 +708,7 @@ func (p *Provider) ListCustomers(ctx context.Context, params *gopay.ListParams) 
 		items = append(items, p.mapCustomer(iter.Customer()))
 	}
 	if err := iter.Err(); err != nil {
-		return nil, p.mapError(err)
+		return nil, p.mapError(ctx, err)
 	}
 	return buildStripeList(items, iter.Meta(), func(x *gopay.Customer) string { return x.ID }), nil
 }
@@ -1251,26 +1255,100 @@ func mapPaymentMethodType(t stripe.PaymentMethodType) gopay.PaymentMethodType {
 	}
 }
 
-func (p *Provider) mapError(err error) error {
+// mapError translates an error from the Stripe SDK into a *gopay.Error.
+//
+// A Stripe API error keeps its status, codes, and request ID, and still
+// unwraps to the *stripe.Error. A transport failure becomes
+// ErrProviderUnavailable. Once ctx is done, a transient failure is reported
+// as the context error instead, so it matches context.Canceled or
+// context.DeadlineExceeded: stripe-go stops retrying when ctx is done and
+// returns the last attempt's error. A definitive answer such as a decline
+// still stands. Any other error is returned unchanged.
+func (p *Provider) mapError(ctx context.Context, err error) error {
+	perr := p.providerError(err)
+	if perr == nil {
+		return err
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil && gopay.IsRetryable(perr) {
+		return fmt.Errorf("%w (last provider error: %s)", ctxErr, perr.Error())
+	}
+	return perr
+}
+
+// undecodableStatus extracts the HTTP status from the untyped error stripe-go
+// returns when a response body is not JSON, such as an HTML page from a proxy
+// in front of the API. TestMapErrorNonJSONResponse guards the message format.
+var undecodableStatus = regexp.MustCompile(`^Couldn't deserialize JSON \(response status: (\d{3}),`)
+
+// providerError classifies err, or returns nil when it did not come from the
+// provider or the network.
+func (p *Provider) providerError(err error) *gopay.Error {
 	if stripeErr, ok := errors.AsType[*stripe.Error](err); ok {
-		switch stripeErr.Code {
-		case stripe.ErrorCodeCardDeclined:
-			return fmt.Errorf("%w: %s", gopay.ErrCardDeclined, stripeErr.Msg)
-		case stripe.ErrorCodeExpiredCard:
-			return fmt.Errorf("%w: %s", gopay.ErrExpiredCard, stripeErr.Msg)
-		case stripe.ErrorCodeInsufficientFunds:
-			return fmt.Errorf("%w: %s", gopay.ErrInsufficientFunds, stripeErr.Msg)
-		case stripe.ErrorCodeIncorrectNumber:
-			return fmt.Errorf("%w: %s", gopay.ErrInvalidCard, stripeErr.Msg)
-		case stripe.ErrorCodeResourceMissing:
-			return fmt.Errorf("%w: %s", gopay.ErrNotFound, stripeErr.Msg)
-		case stripe.ErrorCodeChargeAlreadyRefunded:
-			return fmt.Errorf("%w: %s", gopay.ErrAlreadyRefunded, stripeErr.Msg)
-		case stripe.ErrorCodeChargeAlreadyCaptured:
-			return fmt.Errorf("%w: %s", gopay.ErrAlreadyCaptured, stripeErr.Msg)
-		default:
-			return fmt.Errorf("%w: %s", gopay.ErrProviderError, stripeErr.Msg)
+		code := string(stripeErr.Code)
+		if stripeErr.DeclineCode != "" {
+			code = string(stripeErr.DeclineCode)
+		}
+		return &gopay.Error{
+			Kind:       stripeErrorKind(stripeErr),
+			Provider:   p.Name(),
+			StatusCode: stripeErr.HTTPStatusCode,
+			Code:       code,
+			Message:    stripeErr.Msg,
+			RequestID:  stripeErr.RequestID,
+			Err:        stripeErr,
 		}
 	}
-	return err
+	if m := undecodableStatus.FindStringSubmatch(err.Error()); m != nil {
+		status, _ := strconv.Atoi(m[1])
+		return &gopay.Error{
+			Kind:       gopay.KindForStatus(status),
+			Provider:   p.Name(),
+			StatusCode: status,
+			Message:    "unparseable provider response",
+			Err:        err,
+		}
+	}
+	// net.Error covers failed round trips (*url.Error); a connection dropped
+	// while reading the body surfaces as io.ErrUnexpectedEOF.
+	if _, ok := errors.AsType[net.Error](err); ok || errors.Is(err, io.ErrUnexpectedEOF) {
+		return &gopay.Error{Kind: gopay.ErrProviderUnavailable, Provider: p.Name(), Err: err}
+	}
+	return nil
+}
+
+// stripeErrorKind classifies a Stripe API error. The decline code is checked
+// first because Stripe reports most specific declines, such as insufficient
+// funds, as code "card_declined" with the reason in decline_code.
+func stripeErrorKind(e *stripe.Error) error {
+	switch e.DeclineCode {
+	case stripe.DeclineCodeInsufficientFunds:
+		return gopay.ErrInsufficientFunds
+	case stripe.DeclineCodeExpiredCard:
+		return gopay.ErrExpiredCard
+	case stripe.DeclineCodeAuthenticationRequired:
+		return gopay.ErrAuthenticationRequired
+	}
+
+	switch e.Code {
+	case stripe.ErrorCodeAuthenticationRequired:
+		return gopay.ErrAuthenticationRequired
+	case stripe.ErrorCodeCardDeclined:
+		return gopay.ErrCardDeclined
+	case stripe.ErrorCodeExpiredCard:
+		return gopay.ErrExpiredCard
+	case stripe.ErrorCodeInsufficientFunds:
+		return gopay.ErrInsufficientFunds
+	case stripe.ErrorCodeIncorrectNumber:
+		return gopay.ErrInvalidCard
+	case stripe.ErrorCodeResourceMissing:
+		return gopay.ErrNotFound
+	case stripe.ErrorCodeChargeAlreadyRefunded:
+		return gopay.ErrAlreadyRefunded
+	case stripe.ErrorCodeChargeAlreadyCaptured:
+		return gopay.ErrAlreadyCaptured
+	case stripe.ErrorCodeRateLimit:
+		return gopay.ErrRateLimited
+	}
+
+	return gopay.KindForStatus(e.HTTPStatusCode)
 }

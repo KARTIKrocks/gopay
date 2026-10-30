@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KARTIKrocks/gopay"
 )
@@ -265,49 +266,131 @@ func TestParseError(t *testing.T) {
 	p := &Provider{}
 
 	tests := []struct {
-		name    string
-		body    string
-		wantErr error
+		name     string
+		status   int
+		body     string
+		wantErr  error
+		wantCode string
 	}{
 		{
 			"resource not found",
+			http.StatusNotFound,
 			`{"name":"RESOURCE_NOT_FOUND","message":"resource not found"}`,
-			gopay.ErrNotFound,
+			gopay.ErrNotFound, "RESOURCE_NOT_FOUND",
 		},
 		{
 			"invalid resource ID",
+			http.StatusNotFound,
 			`{"name":"INVALID_RESOURCE_ID","message":"invalid ID"}`,
-			gopay.ErrNotFound,
+			gopay.ErrNotFound, "INVALID_RESOURCE_ID",
 		},
 		{
-			"unprocessable entity with details",
+			"unprocessable entity with unmapped issue",
+			http.StatusUnprocessableEntity,
 			`{"name":"UNPROCESSABLE_ENTITY","message":"error","details":[{"issue":"ISSUE","description":"detail desc"}]}`,
-			gopay.ErrPaymentFailed,
+			gopay.ErrPaymentFailed, "ISSUE",
 		},
 		{
 			"unprocessable entity without details",
+			http.StatusUnprocessableEntity,
 			`{"name":"UNPROCESSABLE_ENTITY","message":"generic error"}`,
-			gopay.ErrPaymentFailed,
+			gopay.ErrPaymentFailed, "UNPROCESSABLE_ENTITY",
 		},
 		{
-			"unknown error",
+			"instrument declined",
+			http.StatusUnprocessableEntity,
+			`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"INSTRUMENT_DECLINED","description":"declined"}]}`,
+			gopay.ErrCardDeclined, "INSTRUMENT_DECLINED",
+		},
+		{
+			"card expired",
+			http.StatusUnprocessableEntity,
+			`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"CARD_EXPIRED","description":"expired"}]}`,
+			gopay.ErrExpiredCard, "CARD_EXPIRED",
+		},
+		{
+			"already captured",
+			http.StatusUnprocessableEntity,
+			`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"ORDER_ALREADY_CAPTURED","description":"captured"}]}`,
+			gopay.ErrAlreadyCaptured, "ORDER_ALREADY_CAPTURED",
+		},
+		{
+			"already refunded",
+			http.StatusUnprocessableEntity,
+			`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"CAPTURE_FULLY_REFUNDED","description":"refunded"}]}`,
+			gopay.ErrAlreadyRefunded, "CAPTURE_FULLY_REFUNDED",
+		},
+		{
+			"rate limit name",
+			http.StatusTooManyRequests,
+			`{"name":"RATE_LIMIT_REACHED","message":"slow down"}`,
+			gopay.ErrRateLimited, "RATE_LIMIT_REACHED",
+		},
+		{
+			"server error",
+			http.StatusInternalServerError,
 			`{"name":"INTERNAL_SERVER_ERROR","message":"server error"}`,
-			gopay.ErrProviderError,
+			gopay.ErrProviderUnavailable, "INTERNAL_SERVER_ERROR",
 		},
 		{
-			"invalid JSON",
-			`not json`,
-			gopay.ErrProviderError,
+			"oauth invalid client",
+			http.StatusUnauthorized,
+			`{"error":"invalid_client","error_description":"Client Authentication failed"}`,
+			gopay.ErrInvalidCredentials, "invalid_client",
+		},
+		{
+			"bad request",
+			http.StatusBadRequest,
+			`{"name":"INVALID_REQUEST","message":"bad"}`,
+			gopay.ErrProviderError, "INVALID_REQUEST",
+		},
+		{
+			"non-JSON gateway error",
+			http.StatusBadGateway,
+			`<html>bad gateway</html>`,
+			gopay.ErrProviderUnavailable, "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := p.parseError([]byte(tt.body))
+			resp := &http.Response{StatusCode: tt.status, Header: http.Header{}}
+			err := p.parseError(resp, []byte(tt.body))
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("parseError() = %v, want %v", err, tt.wantErr)
 			}
+			perr, ok := errors.AsType[*gopay.Error](err)
+			if !ok {
+				t.Fatalf("parseError() = %T, want *gopay.Error", err)
+			}
+			if perr.Code != tt.wantCode || perr.StatusCode != tt.status || perr.Provider != "paypal" {
+				t.Errorf("details = {Code:%q Status:%d Provider:%q}, want {Code:%q Status:%d Provider:paypal}",
+					perr.Code, perr.StatusCode, perr.Provider, tt.wantCode, tt.status)
+			}
 		})
+	}
+}
+
+func TestParseErrorHeaders(t *testing.T) {
+	p := &Provider{}
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header: http.Header{
+			"Paypal-Debug-Id": {"dbg123"},
+			"Retry-After":     {"7"},
+		},
+	}
+
+	err := p.parseError(resp, []byte(`{"name":"RATE_LIMIT_REACHED","message":"slow down"}`))
+
+	if !gopay.IsRetryable(err) {
+		t.Errorf("IsRetryable(%v) = false, want true", err)
+	}
+	if got := gopay.RetryAfter(err); got != 7*time.Second {
+		t.Errorf("RetryAfter() = %v, want 7s", got)
+	}
+	if perr, _ := errors.AsType[*gopay.Error](err); perr.RequestID != "dbg123" {
+		t.Errorf("RequestID = %q, want dbg123", perr.RequestID)
 	}
 }
 
@@ -756,8 +839,71 @@ func TestCreatePaymentServerError(t *testing.T) {
 
 	req := gopay.NewPaymentRequest(gopay.USD(1999))
 	_, err := p.CreatePayment(context.Background(), req)
+	if !errors.Is(err, gopay.ErrProviderUnavailable) || !gopay.IsRetryable(err) {
+		t.Errorf("expected retryable ErrProviderUnavailable, got %v", err)
+	}
+	// Refined kinds keep matching the broader sentinel callers used before.
 	if !errors.Is(err, gopay.ErrProviderError) {
 		t.Errorf("expected ErrProviderError, got %v", err)
+	}
+}
+
+func TestCreatePaymentTransportError(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		// Drop the connection without a response.
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("response writer does not support hijacking")
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Fatalf("hijack: %v", err)
+		}
+		_ = conn.Close()
+	})
+
+	_, err := p.CreatePayment(context.Background(), gopay.NewPaymentRequest(gopay.USD(1999)))
+	if !errors.Is(err, gopay.ErrProviderUnavailable) || !gopay.IsRetryable(err) {
+		t.Errorf("expected retryable ErrProviderUnavailable, got %v", err)
+	}
+}
+
+func TestCreatePaymentCanceledContext(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request should not reach the server")
+	})
+	// Seed the token cache so the cancellation hits the order request itself.
+	p.accessToken, p.tokenExpiry = "test_token", time.Now().Add(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := p.CreatePayment(ctx, gopay.NewPaymentRequest(gopay.USD(1999)))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+	if gopay.IsRetryable(err) {
+		t.Errorf("a canceled call must not be retryable: %v", err)
+	}
+}
+
+func TestAccessTokenInvalidCredentials(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_client","error_description":"Client Authentication failed"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := NewProvider(Config{ClientID: "bad", ClientSecret: "bad", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	_, err = p.CreatePayment(context.Background(), gopay.NewPaymentRequest(gopay.USD(1999)))
+	if !errors.Is(err, gopay.ErrInvalidCredentials) {
+		t.Errorf("expected ErrInvalidCredentials, got %v", err)
+	}
+	if gopay.IsRetryable(err) {
+		t.Errorf("invalid credentials must not be retryable: %v", err)
 	}
 }
 
@@ -898,5 +1044,73 @@ func TestCancelPaymentHTTP(t *testing.T) {
 	}
 	if pay.Status != gopay.PaymentStatusCanceled {
 		t.Errorf("Status = %s, want canceled", pay.Status)
+	}
+}
+
+func TestRefundErrorKind(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet { // the capture lookup Refund does first
+			_, _ = w.Write([]byte(`{"id":"ORDER-001","status":"COMPLETED","purchase_units":[{"amount":{"currency_code":"USD","value":"19.99"},"payments":{"captures":[{"id":"CAP-001","status":"COMPLETED","amount":{"currency_code":"USD","value":"19.99"}}]}}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"REFUND_AMOUNT_EXCEEDED","description":"too much"}]}`))
+	})
+
+	_, err := p.Refund(context.Background(), gopay.NewRefundRequest("ORDER-001"))
+	if !errors.Is(err, gopay.ErrRefundFailed) || errors.Is(err, gopay.ErrPaymentFailed) {
+		t.Errorf("Refund() = %v, want ErrRefundFailed only", err)
+	}
+}
+
+func TestRefundErrorKeepsSpecificKind(t *testing.T) {
+	err := refundError(&gopay.Error{Kind: gopay.ErrAlreadyRefunded})
+	if !errors.Is(err, gopay.ErrAlreadyRefunded) {
+		t.Errorf("refundError() = %v, want ErrAlreadyRefunded kept", err)
+	}
+}
+
+func TestUnauthorizedDropsCachedToken(t *testing.T) {
+	tokenFetches := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/oauth2/token" {
+			tokenFetches++
+			_, _ = w.Write([]byte(tokenResponse))
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"name":"AUTHENTICATION_FAILURE","message":"token revoked"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := NewProvider(Config{ClientID: "id", ClientSecret: "secret", BaseURL: srv.URL})
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	for range 2 {
+		if _, err := p.GetPayment(context.Background(), "ORDER-1"); !errors.Is(err, gopay.ErrInvalidCredentials) {
+			t.Fatalf("GetPayment() = %v, want ErrInvalidCredentials", err)
+		}
+	}
+	if tokenFetches != 2 {
+		t.Errorf("token fetches = %d, want 2: a 401 must drop the cached token", tokenFetches)
+	}
+}
+
+func TestLateUnauthorizedKeepsNewerToken(t *testing.T) {
+	p := &Provider{accessToken: "token_B", tokenExpiry: time.Now().Add(time.Hour)}
+	unauthorized := &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}}
+
+	// A request that used token_A gets its 401 after token_B was fetched.
+	_ = p.apiError(unauthorized, []byte(`{"name":"AUTHENTICATION_FAILURE"}`), "token_A")
+	if p.accessToken != "token_B" {
+		t.Fatalf("accessToken = %q, want token_B kept", p.accessToken)
+	}
+
+	// A 401 for the token still cached drops it.
+	_ = p.apiError(unauthorized, []byte(`{"name":"AUTHENTICATION_FAILURE"}`), "token_B")
+	if p.accessToken != "" {
+		t.Errorf("accessToken = %q, want it dropped", p.accessToken)
 	}
 }

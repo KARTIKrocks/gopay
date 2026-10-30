@@ -45,7 +45,63 @@ matches through the wrapping.
 | `ErrAlreadyCaptured` | The payment was already captured |
 | `ErrAuthenticationRequired` | Additional authentication (e.g. 3DS) is required |
 | `ErrProviderError` | An unmapped provider-side error |
+| `ErrRateLimited` | The provider throttled the request (HTTP 429). Transient _0.10+_ |
+| `ErrProviderUnavailable` | Network failure, timeout, or provider 5xx. Transient _0.10+_ |
+| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401) _0.10+_ |
 | `ErrUnsupported` | The provider doesn't implement the optional capability called |
+
+_Added in 0.10._ `ErrRateLimited`, `ErrProviderUnavailable`, and
+`ErrInvalidCredentials` are refinements of `ErrProviderError` and wrap it, so
+an existing `errors.Is(err, payment.ErrProviderError)` check still matches
+them.
+
+## Transient errors and retries
+
+_Added in 0.10._ `payment.IsRetryable(err)` reports whether a failure is
+transient — rate limited or provider unavailable — and may succeed if the same
+request is sent again. `payment.RetryAfter(err)` returns the wait the provider asked for, or 0.
+
+```go
+_, err := client.GetPayment(ctx, id)
+if payment.IsRetryable(err) {
+    time.Sleep(max(payment.RetryAfter(err), time.Second))
+    // retry
+}
+```
+
+`IsRetryable` classifies the failure only. Whether a retry is _safe_ depends
+on the operation: reads always are, but a create without an idempotency key
+can run twice. Declines, validation failures, and bad credentials are never
+retryable. A call whose own `ctx` was canceled or timed out returns the context
+error, which is not retryable either.
+
+## Structured error details
+
+_Added in 0.10._ Errors that come from a provider call are a `*payment.Error`,
+which carries
+the provider's own diagnostics alongside the normalized kind:
+
+```go
+var perr *payment.Error
+if errors.As(err, &perr) {
+    log.Printf("provider=%s status=%d code=%s request_id=%s",
+        perr.Provider, perr.StatusCode, perr.Code, perr.RequestID)
+}
+```
+
+| Field | Content |
+| --- | --- |
+| `Kind` | The sentinel above that classifies the failure |
+| `Provider` | `"stripe"`, `"paypal"`, or `"razorpay"` |
+| `StatusCode` | HTTP status, or 0 when no response arrived |
+| `Code` | The provider's most specific code (Stripe's decline code, PayPal's issue, Razorpay's error code) — for logs, not control flow |
+| `Message` | The provider's human-readable message |
+| `RequestID` | Stripe's request ID or PayPal's debug ID, when available |
+| `RetryAfter` | The provider's `Retry-After` hint, or 0. PayPal and Razorpay only: stripe-go does not expose response headers |
+| `Err` | The underlying cause: the SDK error or network error |
+
+Validation errors raised by gopay before any provider call are plain sentinels,
+not `*payment.Error`.
 
 ## `ErrUnsupported` is the one to check across providers
 
@@ -62,10 +118,21 @@ if errors.Is(err, payment.ErrUnsupported) {
 
 ## The error-translation pattern
 
-Each provider package implements its own unexported error-translation method
-— `mapError` in Stripe, `parseError` in PayPal and Razorpay — that inspects
-the underlying SDK error (HTTP status code, decline code, provider-specific
-error type) and returns the matching gopay sentinel, falling back to
-`ErrProviderError` for anything it doesn't recognize. Every provider method
-funnels its SDK error through that function before returning, so no raw
-provider error type ever reaches a caller through the `Client`.
+_Changed in 0.10._ Each provider package implements its own unexported
+error-translation method — `mapError` in Stripe, `parseError` in PayPal and
+Razorpay — that returns a `*payment.Error`. Its `Kind` starts from the HTTP status via
+`payment.KindForStatus` (401 → `ErrInvalidCredentials`, 404 →
+`ErrNotFound`, 429 → `ErrRateLimited`, 5xx → `ErrProviderUnavailable`, else
+`ErrProviderError`) and is refined by the provider's own decline or error
+code. A decline is never classified as transient, whatever status accompanies
+it. Network failures become `ErrProviderUnavailable`. Before 0.10 it returned
+a bare sentinel: rate limits, outages, and bad credentials were all a plain
+`ErrProviderError`, and a network failure was `ErrPaymentFailed`,
+`ErrRefundFailed`, or unclassified.
+
+Every provider method funnels its errors through that function, so callers
+branch on gopay's kinds, never on a provider's error type. The original SDK
+error stays reachable with `errors.As` through `Err` as an escape hatch.
+
+_Added in 0.10._ Third-party providers can use `payment.KindForStatus` and
+`payment.ParseRetryAfter` to classify errors the same way.

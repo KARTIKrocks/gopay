@@ -160,48 +160,90 @@ func TestParseError(t *testing.T) {
 
 	tests := []struct {
 		name    string
+		status  int
 		body    string
 		wantErr error
 	}{
 		{
 			"bad request - amount field",
+			http.StatusBadRequest,
 			`{"error":{"code":"BAD_REQUEST_ERROR","description":"invalid amount","field":"amount"}}`,
 			gopay.ErrInvalidAmount,
 		},
 		{
 			"bad request - other field",
+			http.StatusBadRequest,
 			`{"error":{"code":"BAD_REQUEST_ERROR","description":"invalid param","field":"currency"}}`,
 			gopay.ErrPaymentFailed,
 		},
 		{
+			"bad request code with 401 is bad credentials",
+			http.StatusUnauthorized,
+			`{"error":{"code":"BAD_REQUEST_ERROR","description":"Authentication failed"}}`,
+			gopay.ErrInvalidCredentials,
+		},
+		{
+			"bad request code with 429 is rate limited",
+			http.StatusTooManyRequests,
+			`{"error":{"code":"BAD_REQUEST_ERROR","description":"Too many requests"}}`,
+			gopay.ErrRateLimited,
+		},
+		{
+			"bad request code with 404 is not found",
+			http.StatusNotFound,
+			`{"error":{"code":"BAD_REQUEST_ERROR","description":"The id provided does not exist"}}`,
+			gopay.ErrNotFound,
+		},
+		{
 			"gateway error",
+			http.StatusBadRequest,
+			`{"error":{"code":"GATEWAY_ERROR","description":"gateway declined"}}`,
+			gopay.ErrCardDeclined,
+		},
+		{
+			"gateway error with 5xx stays a decline",
+			http.StatusBadGateway,
 			`{"error":{"code":"GATEWAY_ERROR","description":"gateway declined"}}`,
 			gopay.ErrCardDeclined,
 		},
 		{
 			"server error",
+			http.StatusInternalServerError,
 			`{"error":{"code":"SERVER_ERROR","description":"internal error"}}`,
-			gopay.ErrProviderError,
+			gopay.ErrProviderUnavailable,
 		},
 		{
 			"unknown error code",
+			http.StatusBadRequest,
 			`{"error":{"code":"UNKNOWN_CODE","description":"something"}}`,
 			gopay.ErrProviderError,
 		},
 		{
-			"invalid JSON",
+			"non-JSON gateway error",
+			http.StatusServiceUnavailable,
 			`not json`,
-			gopay.ErrProviderError,
+			gopay.ErrProviderUnavailable,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := p.parseError([]byte(tt.body))
+			resp := &http.Response{StatusCode: tt.status, Header: http.Header{}}
+			err := p.parseError(resp, []byte(tt.body))
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("parseError() = %v, want %v", err, tt.wantErr)
 			}
+			if perr, ok := errors.AsType[*gopay.Error](err); !ok || perr.StatusCode != tt.status || perr.Provider != "razorpay" {
+				t.Errorf("parseError() = %#v, want *gopay.Error with status %d", err, tt.status)
+			}
 		})
+	}
+
+	// A decline must never look transient, or a retry layer would resend it.
+	declined := p.parseError(&http.Response{StatusCode: http.StatusBadGateway, Header: http.Header{}},
+		[]byte(`{"error":{"code":"GATEWAY_ERROR","description":"declined"}}`))
+	if gopay.IsRetryable(declined) {
+		t.Errorf("IsRetryable(%v) = true, want false", declined)
 	}
 }
 
@@ -1077,4 +1119,57 @@ type failingTransport struct{}
 
 func (f *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("transport failure")
+}
+
+func TestCreatePaymentTransportError(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		// Drop the connection without a response.
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("response writer does not support hijacking")
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Fatalf("hijack: %v", err)
+		}
+		_ = conn.Close()
+	})
+
+	_, err := p.CreatePayment(context.Background(), gopay.NewPaymentRequest(gopay.INR(1999)))
+	if !errors.Is(err, gopay.ErrProviderUnavailable) || !gopay.IsRetryable(err) {
+		t.Errorf("expected retryable ErrProviderUnavailable, got %v", err)
+	}
+}
+
+func TestCreatePaymentCanceledContext(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request should not reach the server")
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := p.CreatePayment(ctx, gopay.NewPaymentRequest(gopay.INR(1999)))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+	if gopay.IsRetryable(err) {
+		t.Errorf("a canceled call must not be retryable: %v", err)
+	}
+}
+
+func TestRefundErrorKind(t *testing.T) {
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST_ERROR","description":"The payment has been fully refunded already"}}`))
+	})
+
+	_, err := p.Refund(context.Background(), gopay.NewRefundRequest("pay_123"))
+	if !errors.Is(err, gopay.ErrRefundFailed) || errors.Is(err, gopay.ErrPaymentFailed) {
+		t.Errorf("Refund() = %v, want ErrRefundFailed only", err)
+	}
+
+	// A more specific kind is kept.
+	if err := refundError(&gopay.Error{Kind: gopay.ErrInvalidAmount}); !errors.Is(err, gopay.ErrInvalidAmount) {
+		t.Errorf("refundError() = %v, want ErrInvalidAmount kept", err)
+	}
 }
