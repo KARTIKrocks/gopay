@@ -1097,3 +1097,20 @@ func TestUnauthorizedDropsCachedToken(t *testing.T) {
 		t.Errorf("token fetches = %d, want 2: a 401 must drop the cached token", tokenFetches)
 	}
 }
+
+func TestLateUnauthorizedKeepsNewerToken(t *testing.T) {
+	p := &Provider{accessToken: "token_B", tokenExpiry: time.Now().Add(time.Hour)}
+	unauthorized := &http.Response{StatusCode: http.StatusUnauthorized, Header: http.Header{}}
+
+	// A request that used token_A gets its 401 after token_B was fetched.
+	_ = p.apiError(unauthorized, []byte(`{"name":"AUTHENTICATION_FAILURE"}`), "token_A")
+	if p.accessToken != "token_B" {
+		t.Fatalf("accessToken = %q, want token_B kept", p.accessToken)
+	}
+
+	// A 401 for the token still cached drops it.
+	_ = p.apiError(unauthorized, []byte(`{"name":"AUTHENTICATION_FAILURE"}`), "token_B")
+	if p.accessToken != "" {
+		t.Errorf("accessToken = %q, want it dropped", p.accessToken)
+	}
+}

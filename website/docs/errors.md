@@ -45,20 +45,21 @@ matches through the wrapping.
 | `ErrAlreadyCaptured` | The payment was already captured |
 | `ErrAuthenticationRequired` | Additional authentication (e.g. 3DS) is required |
 | `ErrProviderError` | An unmapped provider-side error |
-| `ErrRateLimited` | The provider throttled the request (HTTP 429). Transient |
-| `ErrProviderUnavailable` | Network failure, timeout, or provider 5xx. Transient |
-| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401) |
+| `ErrRateLimited` | The provider throttled the request (HTTP 429). Transient _0.10+_ |
+| `ErrProviderUnavailable` | Network failure, timeout, or provider 5xx. Transient _0.10+_ |
+| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401) _0.10+_ |
 | `ErrUnsupported` | The provider doesn't implement the optional capability called |
 
-`ErrRateLimited`, `ErrProviderUnavailable`, and `ErrInvalidCredentials` are
-refinements of `ErrProviderError` and wrap it, so an existing
-`errors.Is(err, payment.ErrProviderError)` check still matches them.
+_Added in 0.10._ `ErrRateLimited`, `ErrProviderUnavailable`, and
+`ErrInvalidCredentials` are refinements of `ErrProviderError` and wrap it, so
+an existing `errors.Is(err, payment.ErrProviderError)` check still matches
+them.
 
 ## Transient errors and retries
 
-`payment.IsRetryable(err)` reports whether a failure is transient — rate
-limited or provider unavailable — and may succeed if the same request is sent
-again. `payment.RetryAfter(err)` returns the wait the provider asked for, or 0.
+_Added in 0.10._ `payment.IsRetryable(err)` reports whether a failure is
+transient — rate limited or provider unavailable — and may succeed if the same
+request is sent again. `payment.RetryAfter(err)` returns the wait the provider asked for, or 0.
 
 ```go
 _, err := client.GetPayment(ctx, id)
@@ -76,7 +77,8 @@ error, which is not retryable either.
 
 ## Structured error details
 
-Errors that come from a provider call are a `*payment.Error`, which carries
+_Added in 0.10._ Errors that come from a provider call are a `*payment.Error`,
+which carries
 the provider's own diagnostics alongside the normalized kind:
 
 ```go
@@ -116,17 +118,21 @@ if errors.Is(err, payment.ErrUnsupported) {
 
 ## The error-translation pattern
 
-Each provider package implements its own unexported error-translation method
-— `mapError` in Stripe, `parseError` in PayPal and Razorpay — that returns a
-`*payment.Error`. Its `Kind` starts from the HTTP status via
+_Changed in 0.10._ Each provider package implements its own unexported
+error-translation method — `mapError` in Stripe, `parseError` in PayPal and
+Razorpay — that returns a `*payment.Error`. Its `Kind` starts from the HTTP status via
 `payment.KindForStatus` (401 → `ErrInvalidCredentials`, 404 →
 `ErrNotFound`, 429 → `ErrRateLimited`, 5xx → `ErrProviderUnavailable`, else
 `ErrProviderError`) and is refined by the provider's own decline or error
 code. A decline is never classified as transient, whatever status accompanies
-it. Network failures become `ErrProviderUnavailable`.
+it. Network failures become `ErrProviderUnavailable`. Before 0.10 it returned
+a bare sentinel: rate limits, outages, and bad credentials were all a plain
+`ErrProviderError`, and a network failure was `ErrPaymentFailed`,
+`ErrRefundFailed`, or unclassified.
 
 Every provider method funnels its errors through that function, so callers
 branch on gopay's kinds, never on a provider's error type. The original SDK
 error stays reachable with `errors.As` through `Err` as an escape hatch.
-Third-party providers can use `payment.KindForStatus` and
+
+_Added in 0.10._ Third-party providers can use `payment.KindForStatus` and
 `payment.ParseRetryAfter` to classify errors the same way.

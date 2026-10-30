@@ -284,7 +284,7 @@ func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	var o order
@@ -321,7 +321,7 @@ func (p *Provider) GetPayment(ctx context.Context, paymentID string) (*gopay.Pay
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	var o order
@@ -402,7 +402,7 @@ func (p *Provider) CapturePayment(ctx context.Context, paymentID string, amt *go
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	var o order
@@ -435,7 +435,7 @@ func (p *Provider) authorizeOrder(ctx context.Context, token, orderID string) (s
 	}
 
 	if resp.StatusCode >= 400 {
-		return "", p.apiError(resp, respBody)
+		return "", p.apiError(resp, respBody, token)
 	}
 
 	var o order
@@ -489,7 +489,7 @@ func (p *Provider) captureAuthorization(ctx context.Context, token, orderID, aut
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	// Fetch the full order to return a complete Payment.
@@ -530,7 +530,7 @@ func (p *Provider) CancelPayment(ctx context.Context, paymentID string) (*gopay.
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	pay.Status = gopay.PaymentStatusCanceled
@@ -600,7 +600,7 @@ func (p *Provider) Refund(ctx context.Context, req *gopay.RefundRequest) (*gopay
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, refundError(p.apiError(resp, respBody))
+		return nil, refundError(p.apiError(resp, respBody, token))
 	}
 
 	var refundResp refund
@@ -637,7 +637,7 @@ func (p *Provider) GetRefund(ctx context.Context, refundID string) (*gopay.Refun
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, refundError(p.apiError(resp, respBody))
+		return nil, refundError(p.apiError(resp, respBody, token))
 	}
 
 	var refundResp refund
@@ -724,7 +724,7 @@ func (p *Provider) VerifyWebhook(ctx context.Context, payload []byte, headers ma
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, p.apiError(resp, respBody)
+		return nil, p.apiError(resp, respBody, token)
 	}
 
 	var verifyResp struct {
@@ -1042,15 +1042,19 @@ func issueKind(issue string) error {
 	}
 }
 
-// apiError is parseError for API calls. A 401 there means PayPal no longer
-// accepts the cached access token, which it can revoke before expires_in, so
-// the token is dropped and the next call fetches a fresh one instead of
-// failing until the cached expiry. The token endpoint calls parseError
-// directly, because it runs with p.mu held.
-func (p *Provider) apiError(resp *http.Response, body []byte) error {
+// apiError is parseError for API calls made with token. A 401 there means
+// PayPal no longer accepts that token, which it can revoke before expires_in,
+// so it is dropped and the next call fetches a fresh one instead of failing
+// until the cached expiry. Only that token is dropped: a late 401 from a
+// request that used an older token must not discard a newer one another call
+// already fetched. The token endpoint calls parseError directly, because it
+// runs with p.mu held.
+func (p *Provider) apiError(resp *http.Response, body []byte, token string) error {
 	if resp.StatusCode == http.StatusUnauthorized {
 		p.mu.Lock()
-		p.accessToken = ""
+		if p.accessToken == token {
+			p.accessToken = ""
+		}
 		p.mu.Unlock()
 	}
 	return p.parseError(resp, body)
