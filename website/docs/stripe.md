@@ -35,6 +35,7 @@ client, err := payment.NewClient(provider)
 | `SecretKey` | `WithSecretKey` | Required |
 | `WebhookSecret` | `WithWebhookSecret` | Required to call `VerifyWebhook` |
 | `HTTPClient` | `WithHTTPClient` | Optional, for custom timeouts/transport |
+| `MaxNetworkRetries` | `WithMaxNetworkRetries` | Optional; stripe-go's own retries, default 2. Set 0 under a retrying `Client` — see [Retries & timeouts](./retries.md) _0.10+_ |
 
 ## Support matrix
 

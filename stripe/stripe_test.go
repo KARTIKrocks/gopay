@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -802,5 +803,60 @@ func TestMapErrorNonJSONResponse(t *testing.T) {
 	}
 	if perr, _ := errors.AsType[*gopay.Error](err); perr.StatusCode != http.StatusBadGateway {
 		t.Errorf("StatusCode = %d, want 502", perr.StatusCode)
+	}
+}
+
+var _ gopay.IdempotentProvider = (*Provider)(nil)
+
+func TestHonorsIdempotencyKeys(t *testing.T) {
+	if !(&Provider{}).HonorsIdempotencyKeys() {
+		t.Error("Stripe sends every IdempotencyKey; HonorsIdempotencyKeys() must be true")
+	}
+}
+
+// countingTransport answers every request with a retryable 503 and counts them.
+type countingTransport struct{ requests int }
+
+func (rt *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	rt.requests++
+	return &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{"Content-Type": {"application/json"}, "Stripe-Should-Retry": {"true"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"api_error","message":"unavailable"}}`)),
+		Request:    r,
+	}, nil
+}
+
+func TestMaxNetworkRetries(t *testing.T) {
+	for _, tt := range []struct {
+		retries      int64
+		wantRequests int
+	}{{0, 1}, {1, 2}} {
+		rt := &countingTransport{}
+		p, err := NewProvider(DefaultConfig().
+			WithSecretKey("sk_test_123").
+			WithHTTPClient(&http.Client{Transport: rt}).
+			WithMaxNetworkRetries(tt.retries))
+		if err != nil {
+			t.Fatalf("NewProvider: %v", err)
+		}
+
+		_, err = p.GetPayment(context.Background(), "pi_123")
+		if !errors.Is(err, gopay.ErrProviderUnavailable) {
+			t.Errorf("GetPayment() = %v, want ErrProviderUnavailable", err)
+		}
+		if rt.requests != tt.wantRequests {
+			t.Errorf("MaxNetworkRetries=%d: requests = %d, want %d", tt.retries, rt.requests, tt.wantRequests)
+		}
+	}
+}
+
+func TestMaxNetworkRetriesWithoutHTTPClient(t *testing.T) {
+	// Setting retries alone must not require a custom HTTP client.
+	if _, err := NewProvider(DefaultConfig().WithSecretKey("sk_test_123").WithMaxNetworkRetries(0)); err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := NewProvider(DefaultConfig().WithSecretKey("sk_test_123").WithMaxNetworkRetries(-1)); !errors.Is(err, gopay.ErrInvalidConfig) {
+		t.Errorf("negative retries: err = %v, want ErrInvalidConfig", err)
 	}
 }

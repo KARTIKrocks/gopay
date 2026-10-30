@@ -70,3 +70,8 @@ for the full explanation. In short:
 - `Metadata` on Razorpay's `notes` bag decodes safely whether Razorpay sends
   it as an empty JSON object or (as it sometimes does for empty bags) an
   empty JSON array — both normalize to a nil `Metadata` map.
+- _Added in 0.10._ A retrying `Client` never resends a Razorpay write, even
+  with an `IdempotencyKey`: Razorpay's API has no idempotency key, so the
+  provider does not implement `IdempotentProvider`. The key is only stored as
+  the order `receipt`, which Razorpay does not deduplicate on. Reads are still
+  retried — see [Retries & timeouts](./retries.md).

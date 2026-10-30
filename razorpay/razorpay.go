@@ -122,6 +122,11 @@ func (c Config) WithHTTPClient(client *http.Client) Config {
 
 // Provider implements gopay.Provider, gopay.CustomerProvider, gopay.ListProvider,
 // gopay.WebhookProvider, and gopay.SubscriptionProvider for Razorpay.
+//
+// It deliberately does not implement gopay.IdempotentProvider: Razorpay's API
+// has no idempotency key. A request's IdempotencyKey is only stored as the
+// order receipt, which Razorpay does not deduplicate on, so a gopay.Client
+// never resends a Razorpay write; reads are still retried.
 type Provider struct {
 	config Config
 }

@@ -222,6 +222,14 @@ func (p *Provider) Name() string {
 	return "paypal"
 }
 
+// HonorsIdempotencyKeys reports true: CreatePayment and Refund, the request
+// types PayPal implements that carry an IdempotencyKey, send it as the
+// PayPal-Request-Id header, so a gopay.Client with retries enabled may resend
+// them.
+func (p *Provider) HonorsIdempotencyKeys() bool {
+	return true
+}
+
 // CreatePayment creates an order in PayPal.
 func (p *Provider) CreatePayment(ctx context.Context, req *gopay.PaymentRequest) (*gopay.Payment, error) {
 	if req == nil {

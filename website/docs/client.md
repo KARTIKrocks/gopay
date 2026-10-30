@@ -19,6 +19,11 @@ client, err := payment.NewClient(provider)
 `razorpay.NewProvider(...)`) or `payment.NewMockProvider()` for tests — see
 [Mock Provider](./mock-provider.md).
 
+_Added in 0.10._ `NewClient` also takes options: `WithRetry`, `WithTimeout`,
+and `WithLogger` enable retries of transient failures, a default call timeout,
+and retry logging. All are off by default — see
+[Retries & timeouts](./retries.md).
+
 ## The base surface
 
 Every provider implements `Provider`, so these `Client` methods always work
@@ -80,6 +85,7 @@ for which provider implements which optional interface.
 | `SetupIntentProvider` | Save a card without charging | `setupintent.go` |
 | `SubscriptionProvider` | Plans + recurring billing | `subscription.go` |
 | `InvoiceProvider` | Read-only invoice retrieval | `invoice.go` |
+| `IdempotentProvider` | Declares that keyed writes are safe to retry _0.10+_ | `retry.go` |
 
 ## Escape hatches
 

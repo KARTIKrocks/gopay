@@ -3,7 +3,7 @@ package gopay
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -656,17 +656,41 @@ type Address struct {
 	Country    string
 }
 
-// Client is the main payment client.
+// Client is the main payment client. It validates requests, dispatches
+// optional capabilities, and applies the timeout and retry policy given to
+// [NewClient]. It is safe for concurrent use.
 type Client struct {
 	provider Provider
+	retry    RetryPolicy
+	timeout  time.Duration
+	logger   *slog.Logger
+
+	// Seams for tests; see sleepContext and defaultJitter.
+	sleep  func(context.Context, time.Duration) error
+	jitter func(int64) int64
 }
 
-// NewClient creates a new payment client.
-func NewClient(provider Provider) (*Client, error) {
+// NewClient creates a new payment client. Without options it makes one
+// attempt per call with no timeout of its own; see [WithRetry],
+// [WithTimeout], and [WithLogger].
+func NewClient(provider Provider, opts ...ClientOption) (*Client, error) {
 	if provider == nil {
 		return nil, errors.New("gopay: provider must not be nil")
 	}
-	return &Client{provider: provider}, nil
+	c := &Client{
+		provider: provider,
+		retry:    RetryPolicy{MaxAttempts: 1},
+		logger:   slog.New(slog.DiscardHandler),
+		sleep:    sleepContext,
+		jitter:   defaultJitter,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // CreatePayment creates a new payment.
@@ -674,11 +698,9 @@ func (c *Client) CreatePayment(ctx context.Context, req *PaymentRequest) (*Payme
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	payment, err := c.provider.CreatePayment(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("create payment: %w", err)
-	}
-	return payment, nil
+	return do(ctx, c, "create payment", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*Payment, error) {
+		return c.provider.CreatePayment(ctx, req)
+	})
 }
 
 // GetPayment retrieves a payment.
@@ -686,11 +708,9 @@ func (c *Client) GetPayment(ctx context.Context, paymentID string) (*Payment, er
 	if paymentID == "" {
 		return nil, ErrNotFound
 	}
-	payment, err := c.provider.GetPayment(ctx, paymentID)
-	if err != nil {
-		return nil, fmt.Errorf("get payment: %w", err)
-	}
-	return payment, nil
+	return do(ctx, c, "get payment", safeToResend, func(ctx context.Context) (*Payment, error) {
+		return c.provider.GetPayment(ctx, paymentID)
+	})
 }
 
 // CapturePayment captures an authorized payment.
@@ -703,11 +723,9 @@ func (c *Client) CapturePayment(ctx context.Context, paymentID string, amount *A
 			return nil, err
 		}
 	}
-	payment, err := c.provider.CapturePayment(ctx, paymentID, amount)
-	if err != nil {
-		return nil, fmt.Errorf("capture payment: %w", err)
-	}
-	return payment, nil
+	return do(ctx, c, "capture payment", neverResend, func(ctx context.Context) (*Payment, error) {
+		return c.provider.CapturePayment(ctx, paymentID, amount)
+	})
 }
 
 // CancelPayment cancels an authorized payment.
@@ -715,11 +733,9 @@ func (c *Client) CancelPayment(ctx context.Context, paymentID string) (*Payment,
 	if paymentID == "" {
 		return nil, ErrNotFound
 	}
-	payment, err := c.provider.CancelPayment(ctx, paymentID)
-	if err != nil {
-		return nil, fmt.Errorf("cancel payment: %w", err)
-	}
-	return payment, nil
+	return do(ctx, c, "cancel payment", neverResend, func(ctx context.Context) (*Payment, error) {
+		return c.provider.CancelPayment(ctx, paymentID)
+	})
 }
 
 // Refund creates a refund.
@@ -727,11 +743,9 @@ func (c *Client) Refund(ctx context.Context, req *RefundRequest) (*Refund, error
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	refund, err := c.provider.Refund(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("refund: %w", err)
-	}
-	return refund, nil
+	return do(ctx, c, "refund", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*Refund, error) {
+		return c.provider.Refund(ctx, req)
+	})
 }
 
 // FullRefund creates a full refund for a payment.
@@ -740,11 +754,9 @@ func (c *Client) FullRefund(ctx context.Context, paymentID string) (*Refund, err
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	refund, err := c.provider.Refund(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("full refund: %w", err)
-	}
-	return refund, nil
+	return do(ctx, c, "full refund", neverResend, func(ctx context.Context) (*Refund, error) {
+		return c.provider.Refund(ctx, req)
+	})
 }
 
 // GetRefund retrieves a refund.
@@ -752,11 +764,9 @@ func (c *Client) GetRefund(ctx context.Context, refundID string) (*Refund, error
 	if refundID == "" {
 		return nil, ErrNotFound
 	}
-	refund, err := c.provider.GetRefund(ctx, refundID)
-	if err != nil {
-		return nil, fmt.Errorf("get refund: %w", err)
-	}
-	return refund, nil
+	return do(ctx, c, "get refund", safeToResend, func(ctx context.Context) (*Refund, error) {
+		return c.provider.GetRefund(ctx, refundID)
+	})
 }
 
 // VerifyWebhook verifies and parses a webhook event (if supported).
@@ -765,11 +775,9 @@ func (c *Client) VerifyWebhook(ctx context.Context, payload []byte, headers map[
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	event, err := wp.VerifyWebhook(ctx, payload, headers)
-	if err != nil {
-		return nil, fmt.Errorf("verify webhook: %w", err)
-	}
-	return event, nil
+	return do(ctx, c, "verify webhook", neverResend, func(ctx context.Context) (*WebhookEvent, error) {
+		return wp.VerifyWebhook(ctx, payload, headers)
+	})
 }
 
 // Provider returns the underlying provider.
@@ -791,11 +799,9 @@ func (c *Client) CreateCustomer(ctx context.Context, req *CustomerRequest) (*Cus
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	customer, err := cp.CreateCustomer(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("create customer: %w", err)
-	}
-	return customer, nil
+	return do(ctx, c, "create customer", neverResend, func(ctx context.Context) (*Customer, error) {
+		return cp.CreateCustomer(ctx, req)
+	})
 }
 
 // GetCustomer retrieves a customer (if supported).
@@ -807,11 +813,9 @@ func (c *Client) GetCustomer(ctx context.Context, customerID string) (*Customer,
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	customer, err := cp.GetCustomer(ctx, customerID)
-	if err != nil {
-		return nil, fmt.Errorf("get customer: %w", err)
-	}
-	return customer, nil
+	return do(ctx, c, "get customer", safeToResend, func(ctx context.Context) (*Customer, error) {
+		return cp.GetCustomer(ctx, customerID)
+	})
 }
 
 // UpdateCustomer updates a customer (if supported).
@@ -826,11 +830,9 @@ func (c *Client) UpdateCustomer(ctx context.Context, customerID string, req *Cus
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	customer, err := cp.UpdateCustomer(ctx, customerID, req)
-	if err != nil {
-		return nil, fmt.Errorf("update customer: %w", err)
-	}
-	return customer, nil
+	return do(ctx, c, "update customer", neverResend, func(ctx context.Context) (*Customer, error) {
+		return cp.UpdateCustomer(ctx, customerID, req)
+	})
 }
 
 // DeleteCustomer deletes a customer (if supported).
@@ -842,10 +844,9 @@ func (c *Client) DeleteCustomer(ctx context.Context, customerID string) error {
 	if !ok {
 		return ErrUnsupported
 	}
-	if err := cp.DeleteCustomer(ctx, customerID); err != nil {
-		return fmt.Errorf("delete customer: %w", err)
-	}
-	return nil
+	return doErr(ctx, c, "delete customer", func(ctx context.Context) error {
+		return cp.DeleteCustomer(ctx, customerID)
+	})
 }
 
 // AttachPaymentMethod attaches a payment method to a customer (if supported).
@@ -860,10 +861,9 @@ func (c *Client) AttachPaymentMethod(ctx context.Context, customerID, paymentMet
 	if !ok {
 		return ErrUnsupported
 	}
-	if err := pmp.AttachPaymentMethod(ctx, customerID, paymentMethodID); err != nil {
-		return fmt.Errorf("attach payment method: %w", err)
-	}
-	return nil
+	return doErr(ctx, c, "attach payment method", func(ctx context.Context) error {
+		return pmp.AttachPaymentMethod(ctx, customerID, paymentMethodID)
+	})
 }
 
 // DetachPaymentMethod detaches a payment method from a customer (if supported).
@@ -875,10 +875,9 @@ func (c *Client) DetachPaymentMethod(ctx context.Context, paymentMethodID string
 	if !ok {
 		return ErrUnsupported
 	}
-	if err := pmp.DetachPaymentMethod(ctx, paymentMethodID); err != nil {
-		return fmt.Errorf("detach payment method: %w", err)
-	}
-	return nil
+	return doErr(ctx, c, "detach payment method", func(ctx context.Context) error {
+		return pmp.DetachPaymentMethod(ctx, paymentMethodID)
+	})
 }
 
 // ListPaymentMethods lists payment methods for a customer (if supported).
@@ -890,11 +889,9 @@ func (c *Client) ListPaymentMethods(ctx context.Context, customerID string) ([]*
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	methods, err := pmp.ListPaymentMethods(ctx, customerID)
-	if err != nil {
-		return nil, fmt.Errorf("list payment methods: %w", err)
-	}
-	return methods, nil
+	return do(ctx, c, "list payment methods", safeToResend, func(ctx context.Context) ([]*PaymentMethod, error) {
+		return pmp.ListPaymentMethods(ctx, customerID)
+	})
 }
 
 // ListPayments lists payments with cursor-based pagination (if supported).
@@ -906,11 +903,9 @@ func (c *Client) ListPayments(ctx context.Context, params *ListParams) (*List[*P
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	list, err := lp.ListPayments(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("list payments: %w", err)
-	}
-	return list, nil
+	return do(ctx, c, "list payments", safeToResend, func(ctx context.Context) (*List[*Payment], error) {
+		return lp.ListPayments(ctx, params)
+	})
 }
 
 // ListRefunds lists refunds with cursor-based pagination (if supported).
@@ -922,11 +917,9 @@ func (c *Client) ListRefunds(ctx context.Context, params *ListParams) (*List[*Re
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	list, err := lp.ListRefunds(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("list refunds: %w", err)
-	}
-	return list, nil
+	return do(ctx, c, "list refunds", safeToResend, func(ctx context.Context) (*List[*Refund], error) {
+		return lp.ListRefunds(ctx, params)
+	})
 }
 
 // ListCustomers lists customers with cursor-based pagination (if supported).
@@ -938,11 +931,9 @@ func (c *Client) ListCustomers(ctx context.Context, params *ListParams) (*List[*
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	list, err := lp.ListCustomers(ctx, params)
-	if err != nil {
-		return nil, fmt.Errorf("list customers: %w", err)
-	}
-	return list, nil
+	return do(ctx, c, "list customers", safeToResend, func(ctx context.Context) (*List[*Customer], error) {
+		return lp.ListCustomers(ctx, params)
+	})
 }
 
 // CreateSetupIntent sets up a payment method for future off-session charges
@@ -955,11 +946,9 @@ func (c *Client) CreateSetupIntent(ctx context.Context, req *SetupIntentRequest)
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	si, err := sp.CreateSetupIntent(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("create setup intent: %w", err)
-	}
-	return si, nil
+	return do(ctx, c, "create setup intent", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*SetupIntent, error) {
+		return sp.CreateSetupIntent(ctx, req)
+	})
 }
 
 // GetSetupIntent retrieves a setup intent (if supported).
@@ -971,11 +960,9 @@ func (c *Client) GetSetupIntent(ctx context.Context, setupIntentID string) (*Set
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	si, err := sp.GetSetupIntent(ctx, setupIntentID)
-	if err != nil {
-		return nil, fmt.Errorf("get setup intent: %w", err)
-	}
-	return si, nil
+	return do(ctx, c, "get setup intent", safeToResend, func(ctx context.Context) (*SetupIntent, error) {
+		return sp.GetSetupIntent(ctx, setupIntentID)
+	})
 }
 
 // CancelSetupIntent cancels a setup intent (if supported).
@@ -987,11 +974,9 @@ func (c *Client) CancelSetupIntent(ctx context.Context, setupIntentID string) (*
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	si, err := sp.CancelSetupIntent(ctx, setupIntentID)
-	if err != nil {
-		return nil, fmt.Errorf("cancel setup intent: %w", err)
-	}
-	return si, nil
+	return do(ctx, c, "cancel setup intent", neverResend, func(ctx context.Context) (*SetupIntent, error) {
+		return sp.CancelSetupIntent(ctx, setupIntentID)
+	})
 }
 
 // GetInvoice retrieves an invoice by ID (if supported).
@@ -1003,11 +988,9 @@ func (c *Client) GetInvoice(ctx context.Context, invoiceID string) (*Invoice, er
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	inv, err := ip.GetInvoice(ctx, invoiceID)
-	if err != nil {
-		return nil, fmt.Errorf("get invoice: %w", err)
-	}
-	return inv, nil
+	return do(ctx, c, "get invoice", safeToResend, func(ctx context.Context) (*Invoice, error) {
+		return ip.GetInvoice(ctx, invoiceID)
+	})
 }
 
 // CreatePlan creates a recurring plan (if supported).
@@ -1019,11 +1002,9 @@ func (c *Client) CreatePlan(ctx context.Context, req *PlanRequest) (*Plan, error
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	plan, err := sp.CreatePlan(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("create plan: %w", err)
-	}
-	return plan, nil
+	return do(ctx, c, "create plan", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*Plan, error) {
+		return sp.CreatePlan(ctx, req)
+	})
 }
 
 // GetPlan retrieves a plan (if supported).
@@ -1035,11 +1016,9 @@ func (c *Client) GetPlan(ctx context.Context, planID string) (*Plan, error) {
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	plan, err := sp.GetPlan(ctx, planID)
-	if err != nil {
-		return nil, fmt.Errorf("get plan: %w", err)
-	}
-	return plan, nil
+	return do(ctx, c, "get plan", safeToResend, func(ctx context.Context) (*Plan, error) {
+		return sp.GetPlan(ctx, planID)
+	})
 }
 
 // CreateSubscription subscribes a customer to a plan (if supported).
@@ -1051,11 +1030,9 @@ func (c *Client) CreateSubscription(ctx context.Context, req *SubscriptionReques
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	sub, err := sp.CreateSubscription(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("create subscription: %w", err)
-	}
-	return sub, nil
+	return do(ctx, c, "create subscription", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*Subscription, error) {
+		return sp.CreateSubscription(ctx, req)
+	})
 }
 
 // GetSubscription retrieves a subscription (if supported).
@@ -1067,11 +1044,9 @@ func (c *Client) GetSubscription(ctx context.Context, subscriptionID string) (*S
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	sub, err := sp.GetSubscription(ctx, subscriptionID)
-	if err != nil {
-		return nil, fmt.Errorf("get subscription: %w", err)
-	}
-	return sub, nil
+	return do(ctx, c, "get subscription", safeToResend, func(ctx context.Context) (*Subscription, error) {
+		return sp.GetSubscription(ctx, subscriptionID)
+	})
 }
 
 // CancelSubscription cancels a subscription, immediately or at period end (if
@@ -1084,11 +1059,9 @@ func (c *Client) CancelSubscription(ctx context.Context, subscriptionID string, 
 	if !ok {
 		return nil, ErrUnsupported
 	}
-	sub, err := sp.CancelSubscription(ctx, subscriptionID, opts)
-	if err != nil {
-		return nil, fmt.Errorf("cancel subscription: %w", err)
-	}
-	return sub, nil
+	return do(ctx, c, "cancel subscription", neverResend, func(ctx context.Context) (*Subscription, error) {
+		return sp.CancelSubscription(ctx, subscriptionID, opts)
+	})
 }
 
 // WebhookEventKind is a provider-normalized webhook event category. It lets

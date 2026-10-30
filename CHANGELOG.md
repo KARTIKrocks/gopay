@@ -7,10 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Adds a structured, retry-aware error taxonomy. Provider failures now say
-whether they are transient and carry the provider's diagnostics.
+Adds a structured, retry-aware error taxonomy and opt-in retries. Provider
+failures now say whether they are transient and carry the provider's
+diagnostics, and `Client` can retry the ones that are safe to resend.
 
 ### Added
+
+- **Core**: opt-in retries and timeouts. `NewClient` takes options:
+  `WithRetry(RetryPolicy)` retries transient failures with jittered
+  exponential backoff, honoring `Retry-After` up to `MaxDelay`;
+  `WithTimeout` bounds calls whose context has no deadline; `WithLogger`
+  reports retries via `log/slog`. Reads are always retried; writes only when
+  the request has an `IdempotencyKey` and the provider implements the new
+  `IdempotentProvider`. Captures, cancellations, and other unkeyed writes are
+  never resent. Without options, behavior is unchanged.
+- **Stripe, PayPal**: implement `IdempotentProvider`, so keyed writes are
+  retried. Razorpay does not: its API has no idempotency key.
+- **Stripe**: `Config.MaxNetworkRetries` / `WithMaxNetworkRetries` to set
+  stripe-go's own retry count (default 2). Set 0 under a retrying `Client`.
 
 - **Core**: `*gopay.Error`, returned by every provider call that fails at the
   provider. It carries `Kind` (the sentinel), `Provider`, `StatusCode`, `Code`,
