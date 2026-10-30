@@ -32,7 +32,8 @@
 // [NewClient] accepts options: [WithRetry] retries transient failures,
 // [WithTimeout] bounds calls without a deadline, and [WithLogger] reports
 // retries. Reads are always eligible; a write is resent only when its request
-// carries an IdempotencyKey and the provider implements [IdempotentProvider].
+// carries an IdempotencyKey and the provider implements [IdempotentProvider]
+// with HonorsIdempotencyKeys returning true.
 //
 //	client, err := gopay.NewClient(provider, gopay.WithRetry(gopay.RetryPolicy{}))
 //

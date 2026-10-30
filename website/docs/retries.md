@@ -68,7 +68,10 @@ deduplicates on it.
 The wait before retry _n_ is `BaseDelay × 2ⁿ⁻¹`, capped at `MaxDelay`, then
 jittered to between half and all of that value so concurrent clients spread
 out. `RetryPolicy` fields left at zero take their value from
-`payment.DefaultRetryPolicy()`.
+`payment.DefaultRetryPolicy()`, except that a default delay never contradicts
+one you set: `RetryPolicy{BaseDelay: 10 * time.Second}` raises `MaxDelay` to
+10s, and `RetryPolicy{MaxDelay: 100 * time.Millisecond}` lowers `BaseDelay` to
+100ms.
 
 A provider's `Retry-After` hint is honored when it is longer than the backoff.
 If it asks for more than `MaxDelay`, the client returns the error instead of

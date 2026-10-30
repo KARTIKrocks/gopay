@@ -344,6 +344,9 @@ func TestNewClientOptionValidation(t *testing.T) {
 		{"max below base", WithRetry(RetryPolicy{BaseDelay: time.Second, MaxDelay: time.Millisecond}), true},
 		{"negative timeout", WithTimeout(-time.Second), true},
 		{"nil logger ignored", WithLogger(nil), false},
+		{"nil option ignored", nil, false},
+		{"only a small MaxDelay", WithRetry(RetryPolicy{MaxDelay: 100 * time.Millisecond}), false},
+		{"only a large BaseDelay", WithRetry(RetryPolicy{BaseDelay: 10 * time.Second}), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -374,4 +377,45 @@ func equalDurations(a, b []time.Duration) bool {
 		}
 	}
 	return true
+}
+
+func TestRetryWaitDoesNotOverflow(t *testing.T) {
+	t.Parallel()
+	c, err := NewClient(NewMockProvider(), WithRetry(RetryPolicy{MaxAttempts: 100, BaseDelay: 5 * time.Second, MaxDelay: 10 * time.Second}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// BaseDelay << 31 overflows int64; every late attempt must still wait MaxDelay.
+	for attempt := 1; attempt <= 99; attempt++ {
+		wait, ok := c.retryWait(context.Background(), attempt, ErrProviderUnavailable)
+		if !ok || wait <= 0 || wait > 10*time.Second {
+			t.Fatalf("attempt %d: retryWait() = %v, %v; want within (0, 10s]", attempt, wait, ok)
+		}
+	}
+}
+
+func TestWithRetryDerivesUnsetDelay(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		policy   RetryPolicy
+		wantBase time.Duration
+		wantMax  time.Duration
+	}{
+		{"small max lowers default base", RetryPolicy{MaxDelay: 100 * time.Millisecond}, 100 * time.Millisecond, 100 * time.Millisecond},
+		{"large base raises default max", RetryPolicy{BaseDelay: 10 * time.Second}, 10 * time.Second, 10 * time.Second},
+		{"compatible max keeps default base", RetryPolicy{MaxDelay: time.Minute}, 250 * time.Millisecond, time.Minute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c, err := NewClient(NewMockProvider(), WithRetry(tt.policy))
+			if err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			if c.retry.BaseDelay != tt.wantBase || c.retry.MaxDelay != tt.wantMax {
+				t.Errorf("delays = %v..%v, want %v..%v", c.retry.BaseDelay, c.retry.MaxDelay, tt.wantBase, tt.wantMax)
+			}
+		})
+	}
 }

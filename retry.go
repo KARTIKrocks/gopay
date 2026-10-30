@@ -60,8 +60,10 @@ func DefaultRetryPolicy() RetryPolicy {
 
 // WithRetry enables retries of transient provider failures under policy.
 // Zero fields take their value from [DefaultRetryPolicy], so
-// WithRetry(RetryPolicy{}) uses the defaults. Retries are disabled unless
-// this option is given.
+// WithRetry(RetryPolicy{}) uses the defaults, except that a default delay
+// never contradicts the one you set: a BaseDelay above the default MaxDelay
+// raises MaxDelay to match, and a MaxDelay below the default BaseDelay lowers
+// BaseDelay to match. Retries are disabled unless this option is given.
 //
 // The retries happen in gopay, above the provider SDK. Some SDKs retry on
 // their own as well; see the provider package for how to turn that off so
@@ -72,11 +74,13 @@ func WithRetry(policy RetryPolicy) ClientOption {
 		if policy.MaxAttempts == 0 {
 			policy.MaxAttempts = def.MaxAttempts
 		}
-		if policy.BaseDelay == 0 {
-			policy.BaseDelay = def.BaseDelay
-		}
-		if policy.MaxDelay == 0 {
-			policy.MaxDelay = def.MaxDelay
+		switch {
+		case policy.BaseDelay == 0 && policy.MaxDelay == 0:
+			policy.BaseDelay, policy.MaxDelay = def.BaseDelay, def.MaxDelay
+		case policy.BaseDelay == 0:
+			policy.BaseDelay = min(def.BaseDelay, policy.MaxDelay)
+		case policy.MaxDelay == 0:
+			policy.MaxDelay = max(def.MaxDelay, policy.BaseDelay)
 		}
 		c.retry = policy
 	}
@@ -137,7 +141,7 @@ func do[T any](ctx context.Context, c *Client, op string, resendable bool, fn fu
 
 	attempts := 1
 	if resendable {
-		attempts = max(c.retry.MaxAttempts, 1)
+		attempts = c.retry.MaxAttempts // at least 1: NewClient and WithRetry ensure it
 	}
 
 	var zero T
@@ -175,9 +179,11 @@ func doErr(ctx context.Context, c *Client, op string, fn func(context.Context) e
 // false when retrying is pointless: the provider asked for a longer wait
 // than the policy allows, or ctx's deadline will pass first.
 func (c *Client) retryWait(ctx context.Context, attempt int, err error) (time.Duration, bool) {
+	// BaseDelay << shift, capped at MaxDelay. Comparing against
+	// MaxDelay >> shift first keeps the shift from overflowing.
 	backoff := c.retry.MaxDelay
-	if shift := attempt - 1; shift < 32 { // beyond 2^31 it is past any MaxDelay
-		backoff = min(c.retry.BaseDelay<<shift, c.retry.MaxDelay)
+	if shift := attempt - 1; shift < 63 && c.retry.BaseDelay <= c.retry.MaxDelay>>shift {
+		backoff = c.retry.BaseDelay << shift
 	}
 	wait := backoff/2 + time.Duration(c.jitter(int64(backoff/2)+1))
 

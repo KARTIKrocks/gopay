@@ -685,7 +685,9 @@ func NewClient(provider Provider, opts ...ClientOption) (*Client, error) {
 		jitter:   defaultJitter,
 	}
 	for _, opt := range opts {
-		opt(c)
+		if opt != nil { // tolerate conditionally built option lists
+			opt(c)
+		}
 	}
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -754,7 +756,7 @@ func (c *Client) FullRefund(ctx context.Context, paymentID string) (*Refund, err
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	return do(ctx, c, "full refund", neverResend, func(ctx context.Context) (*Refund, error) {
+	return do(ctx, c, "full refund", c.resendable(req.IdempotencyKey), func(ctx context.Context) (*Refund, error) {
 		return c.provider.Refund(ctx, req)
 	})
 }
