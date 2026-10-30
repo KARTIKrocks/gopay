@@ -107,3 +107,10 @@ provider, err := stripe.NewProvider(stripe.DefaultConfig().
     WithSecretKey(key).
     WithMaxNetworkRetries(0))
 ```
+
+Stripe stores the response to a keyed write for 24 hours, including a `500`,
+and replays it for any request with the same key. A keyed write that fails
+with a `500` therefore fails the same way on every retry. That costs only the
+extra attempts, never a duplicate charge. stripe-go doesn't expose the
+`Stripe-Should-Retry` header that would let gopay tell these failures apart.
+`429`s and network errors are not stored, so retrying them works as intended.
