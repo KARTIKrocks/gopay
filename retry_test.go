@@ -419,3 +419,17 @@ func TestWithRetryDerivesUnsetDelay(t *testing.T) {
 		})
 	}
 }
+
+func TestWithRetrySharedAcrossClients(t *testing.T) {
+	t.Parallel()
+	opt := WithRetry(RetryPolicy{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if _, err := NewClient(NewMockProvider(), opt); err != nil {
+				t.Errorf("NewClient: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+}

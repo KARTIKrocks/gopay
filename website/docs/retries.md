@@ -76,7 +76,8 @@ one you set: `RetryPolicy{BaseDelay: 10 * time.Second}` raises `MaxDelay` to
 A provider's `Retry-After` hint is honored when it is longer than the backoff.
 If it asks for more than `MaxDelay`, the client returns the error instead of
 waiting; read the requested wait with `payment.RetryAfter(err)` and schedule
-the retry yourself.
+the retry yourself. stripe-go doesn't expose response headers, so Stripe
+errors carry no `Retry-After` and always use the backoff.
 
 The client never waits past the context's deadline: if the next wait would end
 after it, the client returns the last error at once. If the context is
@@ -87,8 +88,10 @@ provider error kept in its message.
 
 `WithTimeout(d)` bounds each call whose context has **no** deadline, covering
 every attempt and the waits between them. A context that already has a
-deadline is used as is. Each provider also sets a per-request HTTP timeout of
-its own (30s by default).
+deadline is used as is. Each provider also bounds every HTTP request on its
+own: PayPal and Razorpay at 30s, Stripe at stripe-go's 80s default (30s for a
+custom `HTTPClient` without a timeout). Those bound single requests;
+`WithTimeout` bounds the whole call.
 
 ## Logging
 

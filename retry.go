@@ -70,6 +70,7 @@ func DefaultRetryPolicy() RetryPolicy {
 // attempts do not multiply.
 func WithRetry(policy RetryPolicy) ClientOption {
 	return func(c *Client) {
+		policy := policy // the option may be shared by concurrent NewClient calls
 		def := DefaultRetryPolicy()
 		if policy.MaxAttempts == 0 {
 			policy.MaxAttempts = def.MaxAttempts
