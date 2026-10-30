@@ -31,6 +31,12 @@ type Config struct {
 
 	// HTTPClient is a custom HTTP client (optional).
 	HTTPClient *http.Client
+
+	// MaxNetworkRetries is how many times stripe-go itself retries a failed
+	// request (optional). Nil keeps stripe-go's default of 2. Set it to 0
+	// when the gopay.Client retries (gopay.WithRetry), or the two retry
+	// layers multiply: 3 gopay attempts of 3 SDK attempts each is 9 requests.
+	MaxNetworkRetries *int64
 }
 
 // DefaultConfig returns a default Stripe configuration.
@@ -56,6 +62,13 @@ func (c Config) WithHTTPClient(httpClient *http.Client) Config {
 	return c
 }
 
+// WithMaxNetworkRetries sets how many times stripe-go itself retries a failed
+// request. Pass 0 when the gopay.Client retries; see Config.MaxNetworkRetries.
+func (c Config) WithMaxNetworkRetries(n int64) Config {
+	c.MaxNetworkRetries = &n
+	return c
+}
+
 // Provider implements gopay.Provider for Stripe.
 type Provider struct {
 	config Config
@@ -68,21 +81,27 @@ func NewProvider(config Config) (*Provider, error) {
 		return nil, fmt.Errorf("%w: secret key required", gopay.ErrInvalidConfig)
 	}
 
+	if config.MaxNetworkRetries != nil && *config.MaxNetworkRetries < 0 {
+		return nil, fmt.Errorf("%w: max network retries must not be negative", gopay.ErrInvalidConfig)
+	}
+
 	var backends *stripe.Backends
-	if config.HTTPClient != nil {
+	if config.HTTPClient != nil || config.MaxNetworkRetries != nil {
 		// Copy the caller's client before applying a default timeout so we never
 		// mutate a *http.Client the caller still owns, and so a custom client
 		// with no timeout can't block requests indefinitely.
-		if config.HTTPClient.Timeout == 0 {
+		if config.HTTPClient != nil && config.HTTPClient.Timeout == 0 {
 			clientCopy := *config.HTTPClient
 			clientCopy.Timeout = 30 * time.Second
 			config.HTTPClient = &clientCopy
 		}
 		httpBackend := stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
-			HTTPClient: config.HTTPClient,
+			HTTPClient:        config.HTTPClient,
+			MaxNetworkRetries: config.MaxNetworkRetries,
 		})
 		uploadBackend := stripe.GetBackendWithConfig(stripe.UploadsBackend, &stripe.BackendConfig{
-			HTTPClient: config.HTTPClient,
+			HTTPClient:        config.HTTPClient,
+			MaxNetworkRetries: config.MaxNetworkRetries,
 		})
 		backends = &stripe.Backends{
 			API:     httpBackend,
@@ -98,6 +117,13 @@ func NewProvider(config Config) (*Provider, error) {
 // Name returns the provider name.
 func (p *Provider) Name() string {
 	return "stripe"
+}
+
+// HonorsIdempotencyKeys reports true: every request type with an
+// IdempotencyKey sends it as Stripe's Idempotency-Key header, so a
+// gopay.Client with retries enabled may resend those writes.
+func (p *Provider) HonorsIdempotencyKeys() bool {
+	return true
 }
 
 // CreatePayment creates a payment intent.

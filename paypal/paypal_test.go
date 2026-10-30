@@ -1114,3 +1114,44 @@ func TestLateUnauthorizedKeepsNewerToken(t *testing.T) {
 		t.Errorf("accessToken = %q, want it dropped", p.accessToken)
 	}
 }
+
+var _ gopay.IdempotentProvider = (*Provider)(nil)
+
+func TestHonorsIdempotencyKeys(t *testing.T) {
+	if !(&Provider{}).HonorsIdempotencyKeys() {
+		t.Error("PayPal sends PayPal-Request-Id for every keyed request; HonorsIdempotencyKeys() must be true")
+	}
+}
+
+// TestClientRetryResendsSameRequestID drives a retrying gopay.Client through
+// the real provider: the resent create must carry the same PayPal-Request-Id,
+// which is what makes resending it safe.
+func TestClientRetryResendsSameRequestID(t *testing.T) {
+	var requestIDs []string
+	p := newTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		requestIDs = append(requestIDs, r.Header.Get("PayPal-Request-Id"))
+		if len(requestIDs) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"name":"SERVICE_UNAVAILABLE","message":"try again"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"ORDER-1","status":"CREATED","purchase_units":[{"amount":{"currency_code":"USD","value":"10.00"}}]}`))
+	})
+
+	client, err := gopay.NewClient(p, gopay.WithRetry(gopay.RetryPolicy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond}))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	pay, err := client.CreatePayment(context.Background(), gopay.NewPaymentRequest(gopay.USD(1000)).WithIdempotencyKey("idem_42"))
+	if err != nil {
+		t.Fatalf("CreatePayment() error = %v", err)
+	}
+	if pay.ID != "ORDER-1" {
+		t.Errorf("payment ID = %q, want ORDER-1", pay.ID)
+	}
+	if len(requestIDs) != 2 || requestIDs[0] != "idem_42" || requestIDs[1] != "idem_42" {
+		t.Errorf("PayPal-Request-Id per attempt = %v, want [idem_42 idem_42]", requestIDs)
+	}
+}

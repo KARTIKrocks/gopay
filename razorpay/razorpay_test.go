@@ -1173,3 +1173,12 @@ func TestRefundErrorKind(t *testing.T) {
 		t.Errorf("refundError() = %v, want ErrInvalidAmount kept", err)
 	}
 }
+
+// Razorpay has no idempotency key, so declaring one would let a gopay.Client
+// resend a write and charge twice.
+func TestDoesNotClaimIdempotency(t *testing.T) {
+	var p gopay.Provider = &Provider{}
+	if _, ok := p.(gopay.IdempotentProvider); ok {
+		t.Error("Razorpay must not implement gopay.IdempotentProvider")
+	}
+}

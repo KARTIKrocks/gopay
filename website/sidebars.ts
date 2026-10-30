@@ -15,7 +15,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Core',
       collapsed: false,
-      items: ['client', 'payments', 'refunds', 'errors'],
+      items: ['client', 'payments', 'refunds', 'errors', 'retries'],
     },
     {
       type: 'category',

@@ -396,6 +396,24 @@ Errors from a provider call are a `*payment.Error` carrying the provider name,
 HTTP status, provider error code, and request ID — reach it with `errors.As`.
 See [Errors](https://kartikrocks.github.io/gopay/docs/errors) for details.
 
+## Retries & Timeouts
+
+Opt in to retries of transient failures (rate limits, network errors,
+provider 5xx) and a default call timeout:
+
+```go
+client, err := payment.NewClient(provider,
+    payment.WithRetry(payment.RetryPolicy{}), // 3 attempts, 250ms–5s backoff
+    payment.WithTimeout(30*time.Second),
+)
+```
+
+Reads are always retried. Writes are retried only when the request carries an
+idempotency key the provider honors (Stripe, PayPal); captures, cancellations,
+and every Razorpay write are never resent. With Stripe, also set
+`WithMaxNetworkRetries(0)` so stripe-go's own retries don't multiply.
+See [Retries & timeouts](https://kartikrocks.github.io/gopay/docs/next/retries).
+
 ## Mock Provider for Testing
 
 ```go
