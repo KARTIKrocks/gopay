@@ -32,24 +32,24 @@ empty.
 
 ## `Config`
 
-| Field | Set via | Notes |
-| --- | --- | --- |
-| `KeyID`, `KeySecret` | `WithCredentials` | Required |
-| `WebhookSecret` | `WithWebhookSecret` | Required to call `VerifyWebhook` |
-| `HTTPClient` | `WithHTTPClient` | Optional; `DefaultConfig()` sets a 30s timeout |
+| Field                | Set via             | Notes                                          |
+| -------------------- | ------------------- | ---------------------------------------------- |
+| `KeyID`, `KeySecret` | `WithCredentials`   | Required                                       |
+| `WebhookSecret`      | `WithWebhookSecret` | Required to call `VerifyWebhook`               |
+| `HTTPClient`         | `WithHTTPClient`    | Optional; `DefaultConfig()` sets a 30s timeout |
 
 ## Support matrix
 
-| Capability | Supported |
-| --- | --- |
-| Payments, Refunds | ✓ |
-| Customers | ✓ |
-| Payment Methods | – |
-| Setup Intents | – (Stripe only) |
-| Subscriptions | ✓ — mandate-authorization flow, see below |
-| Invoices | ✓ |
-| Webhooks | ✓ (`X-Razorpay-Signature` header) |
-| Listing | ✓ (cursor = skip offset) |
+| Capability        | Supported                                 |
+| ----------------- | ----------------------------------------- |
+| Payments, Refunds | ✓                                         |
+| Customers         | ✓                                         |
+| Payment Methods   | –                                         |
+| Setup Intents     | – (Stripe only)                           |
+| Subscriptions     | ✓ — mandate-authorization flow, see below |
+| Invoices          | ✓                                         |
+| Webhooks          | ✓ (`X-Razorpay-Signature` header)         |
+| Listing           | ✓ (cursor = skip offset)                  |
 
 ## Subscriptions authorize via a customer-facing redirect
 

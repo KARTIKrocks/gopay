@@ -33,25 +33,25 @@ client, err := payment.NewClient(provider)
 
 ## `Config`
 
-| Field | Set via | Notes |
-| --- | --- | --- |
-| `ClientID`, `ClientSecret` | `WithCredentials` | Required |
-| `Sandbox` | `WithSandbox` | **`true` by default** in `DefaultConfig()` — call `WithSandbox(false)` for production |
-| `WebhookID` | `WithWebhookID` | Required to call `VerifyWebhook` |
-| `HTTPClient` | `WithHTTPClient` | Optional; `DefaultConfig()` sets a 30s timeout |
+| Field                      | Set via           | Notes                                                                                 |
+| -------------------------- | ----------------- | ------------------------------------------------------------------------------------- |
+| `ClientID`, `ClientSecret` | `WithCredentials` | Required                                                                              |
+| `Sandbox`                  | `WithSandbox`     | **`true` by default** in `DefaultConfig()` — call `WithSandbox(false)` for production |
+| `WebhookID`                | `WithWebhookID`   | Required to call `VerifyWebhook`                                                      |
+| `HTTPClient`               | `WithHTTPClient`  | Optional; `DefaultConfig()` sets a 30s timeout                                        |
 
 ## Support matrix
 
-| Capability | Supported |
-| --- | --- |
-| Payments, Refunds | ✓ |
-| Customers | – |
-| Payment Methods | – |
-| Setup Intents | – |
-| Subscriptions | – |
-| Invoices | – |
-| Webhooks | ✓ (`PAYPAL-TRANSMISSION-SIG` + related `PAYPAL-*` headers) |
-| Listing | – (the Orders API has no list endpoint) |
+| Capability        | Supported                                                  |
+| ----------------- | ---------------------------------------------------------- |
+| Payments, Refunds | ✓                                                          |
+| Customers         | –                                                          |
+| Payment Methods   | –                                                          |
+| Setup Intents     | –                                                          |
+| Subscriptions     | –                                                          |
+| Invoices          | –                                                          |
+| Webhooks          | ✓ (`PAYPAL-TRANSMISSION-SIG` + related `PAYPAL-*` headers) |
+| Listing           | – (the Orders API has no list endpoint)                    |
 
 Every unsupported capability above returns `payment.ErrUnsupported` from the
 `Client` rather than panicking or silently no-op'ing — see [Errors](./errors.md).

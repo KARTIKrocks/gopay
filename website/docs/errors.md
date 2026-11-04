@@ -27,28 +27,28 @@ matches through the wrapping.
 
 ## Sentinel errors
 
-| Error | Meaning |
-| --- | --- |
-| `ErrInvalidConfig` | Provider configuration is invalid (e.g. missing API key) |
-| `ErrInvalidAmount` | Amount is negative or fails validation |
-| `ErrInvalidCurrency` | Currency is empty or not in the accepted ISO 4217 set |
-| `ErrInvalidCard` | Card details are invalid |
-| `ErrCardDeclined` | The card was declined |
-| `ErrInsufficientFunds` | The card had insufficient funds |
-| `ErrExpiredCard` | The card has expired |
-| `ErrPaymentFailed` | The payment failed for another reason |
-| `ErrRefundFailed` | The refund failed |
-| `ErrSetupFailed` | The setup intent failed |
-| `ErrSubscriptionFailed` | The subscription operation failed |
-| `ErrNotFound` | The requested resource doesn't exist (also returned for an empty ID) |
-| `ErrAlreadyRefunded` | The payment was already fully refunded |
-| `ErrAlreadyCaptured` | The payment was already captured |
-| `ErrAuthenticationRequired` | Additional authentication (e.g. 3DS) is required |
-| `ErrProviderError` | An unmapped provider-side error |
-| `ErrRateLimited` | The provider throttled the request (HTTP 429). Transient _0.10+_ |
-| `ErrProviderUnavailable` | Network failure, timeout, or provider 5xx. Transient _0.10+_ |
-| `ErrInvalidCredentials` | The provider rejected the API credentials (HTTP 401) _0.10+_ |
-| `ErrUnsupported` | The provider doesn't implement the optional capability called |
+| Error                       | Meaning                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| `ErrInvalidConfig`          | Provider configuration is invalid (e.g. missing API key)             |
+| `ErrInvalidAmount`          | Amount is negative or fails validation                               |
+| `ErrInvalidCurrency`        | Currency is empty or not in the accepted ISO 4217 set                |
+| `ErrInvalidCard`            | Card details are invalid                                             |
+| `ErrCardDeclined`           | The card was declined                                                |
+| `ErrInsufficientFunds`      | The card had insufficient funds                                      |
+| `ErrExpiredCard`            | The card has expired                                                 |
+| `ErrPaymentFailed`          | The payment failed for another reason                                |
+| `ErrRefundFailed`           | The refund failed                                                    |
+| `ErrSetupFailed`            | The setup intent failed                                              |
+| `ErrSubscriptionFailed`     | The subscription operation failed                                    |
+| `ErrNotFound`               | The requested resource doesn't exist (also returned for an empty ID) |
+| `ErrAlreadyRefunded`        | The payment was already fully refunded                               |
+| `ErrAlreadyCaptured`        | The payment was already captured                                     |
+| `ErrAuthenticationRequired` | Additional authentication (e.g. 3DS) is required                     |
+| `ErrProviderError`          | An unmapped provider-side error                                      |
+| `ErrRateLimited`            | The provider throttled the request (HTTP 429). Transient _0.10+_     |
+| `ErrProviderUnavailable`    | Network failure, timeout, or provider 5xx. Transient _0.10+_         |
+| `ErrInvalidCredentials`     | The provider rejected the API credentials (HTTP 401) _0.10+_         |
+| `ErrUnsupported`            | The provider doesn't implement the optional capability called        |
 
 _Added in 0.10._ `ErrRateLimited`, `ErrProviderUnavailable`, and
 `ErrInvalidCredentials` are refinements of `ErrProviderError` and wrap it, so
@@ -89,16 +89,16 @@ if errors.As(err, &perr) {
 }
 ```
 
-| Field | Content |
-| --- | --- |
-| `Kind` | The sentinel above that classifies the failure |
-| `Provider` | `"stripe"`, `"paypal"`, or `"razorpay"` |
-| `StatusCode` | HTTP status, or 0 when no response arrived |
-| `Code` | The provider's most specific code (Stripe's decline code, PayPal's issue, Razorpay's error code) — for logs, not control flow |
-| `Message` | The provider's human-readable message |
-| `RequestID` | Stripe's request ID or PayPal's debug ID, when available |
-| `RetryAfter` | The provider's `Retry-After` hint, or 0. PayPal and Razorpay only: stripe-go does not expose response headers |
-| `Err` | The underlying cause: the SDK error or network error |
+| Field        | Content                                                                                                                       |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `Kind`       | The sentinel above that classifies the failure                                                                                |
+| `Provider`   | `"stripe"`, `"paypal"`, or `"razorpay"`                                                                                       |
+| `StatusCode` | HTTP status, or 0 when no response arrived                                                                                    |
+| `Code`       | The provider's most specific code (Stripe's decline code, PayPal's issue, Razorpay's error code) — for logs, not control flow |
+| `Message`    | The provider's human-readable message                                                                                         |
+| `RequestID`  | Stripe's request ID or PayPal's debug ID, when available                                                                      |
+| `RetryAfter` | The provider's `Retry-After` hint, or 0. PayPal and Razorpay only: stripe-go does not expose response headers                 |
+| `Err`        | The underlying cause: the SDK error or network error                                                                          |
 
 Validation errors raised by gopay before any provider call are plain sentinels,
 not `*payment.Error`.

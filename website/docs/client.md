@@ -76,16 +76,16 @@ for which provider implements which optional interface.
 
 ## Optional interfaces at a glance
 
-| Interface | Adds | Defined in |
-| --- | --- | --- |
-| `CustomerProvider` | Create/get/update/delete customers | `payment.go` |
-| `PaymentMethodProvider` | Attach/detach/list payment methods | `payment.go` |
-| `WebhookProvider` | `VerifyWebhook` | `payment.go` |
-| `ListProvider` | Cursor-paginated `ListPayments`/`ListRefunds`/`ListCustomers` | `list.go` |
-| `SetupIntentProvider` | Save a card without charging | `setupintent.go` |
-| `SubscriptionProvider` | Plans + recurring billing | `subscription.go` |
-| `InvoiceProvider` | Read-only invoice retrieval | `invoice.go` |
-| `IdempotentProvider` | Declares that keyed writes are safe to retry _0.10+_ | `retry.go` |
+| Interface               | Adds                                                          | Defined in        |
+| ----------------------- | ------------------------------------------------------------- | ----------------- |
+| `CustomerProvider`      | Create/get/update/delete customers                            | `payment.go`      |
+| `PaymentMethodProvider` | Attach/detach/list payment methods                            | `payment.go`      |
+| `WebhookProvider`       | `VerifyWebhook`                                               | `payment.go`      |
+| `ListProvider`          | Cursor-paginated `ListPayments`/`ListRefunds`/`ListCustomers` | `list.go`         |
+| `SetupIntentProvider`   | Save a card without charging                                  | `setupintent.go`  |
+| `SubscriptionProvider`  | Plans + recurring billing                                     | `subscription.go` |
+| `InvoiceProvider`       | Read-only invoice retrieval                                   | `invoice.go`      |
+| `IdempotentProvider`    | Declares that keyed writes are safe to retry _0.10+_          | `retry.go`        |
 
 ## Escape hatches
 

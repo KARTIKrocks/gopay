@@ -23,20 +23,20 @@ go get github.com/KARTIKrocks/gopay/stripe   # or paypal, razorpay
 
 ## What you get
 
-| | |
-| --- | --- |
-| **Unified interface** | One `Client` API across Stripe, PayPal, and Razorpay |
-| **Dependency isolation** | Each provider is a separate Go module |
-| **Payments** | Create, capture (automatic or manual), get, and cancel |
-| **Refunds** | Full and partial refund processing |
-| **Customers & payment methods** | Create, manage, attach, detach |
-| **Setup intents** | Save a card for later off-session charges |
-| **Subscriptions** | Plans and recurring billing |
-| **Invoices** | Read-only invoice retrieval with hosted URLs |
-| **Webhooks** | Signature-verified, normalized events |
-| **Cursor pagination** | A consistent `List`/paginate pattern |
-| **Mock provider** | In-memory provider for tests, no network |
-| **Thread safe** | Every method is safe for concurrent use |
+|                                 |                                                        |
+| ------------------------------- | ------------------------------------------------------ |
+| **Unified interface**           | One `Client` API across Stripe, PayPal, and Razorpay   |
+| **Dependency isolation**        | Each provider is a separate Go module                  |
+| **Payments**                    | Create, capture (automatic or manual), get, and cancel |
+| **Refunds**                     | Full and partial refund processing                     |
+| **Customers & payment methods** | Create, manage, attach, detach                         |
+| **Setup intents**               | Save a card for later off-session charges              |
+| **Subscriptions**               | Plans and recurring billing                            |
+| **Invoices**                    | Read-only invoice retrieval with hosted URLs           |
+| **Webhooks**                    | Signature-verified, normalized events                  |
+| **Cursor pagination**           | A consistent `List`/paginate pattern                   |
+| **Mock provider**               | In-memory provider for tests, no network               |
+| **Thread safe**                 | Every method is safe for concurrent use                |
 
 ## Where to go next
 
