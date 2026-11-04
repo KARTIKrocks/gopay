@@ -27,16 +27,16 @@ An empty `invoiceID` returns `payment.ErrNotFound` without a network call.
 
 ## `Invoice` fields
 
-| Field | Notes |
-| --- | --- |
-| `Status` | `InvoiceStatusDraft`, `Open`, `Paid`, `Void`, or `Uncollectible` |
-| `SubscriptionID` | Set when the invoice originates from recurring billing |
-| `CustomerID` | When available |
-| `Number` | The provider's human-readable invoice number, when assigned |
-| `Amount` / `AmountPaid` | Minor units; `nil` when the provider doesn't report them |
-| `HostedInvoiceURL` | Stripe's `hosted_invoice_url`, Razorpay's `short_url` |
-| `PDFURL` | Downloadable PDF link (Stripe only); empty otherwise |
-| `DueDate` / `PaidAt` | Zero value when not set/reported |
+| Field                   | Notes                                                            |
+| ----------------------- | ---------------------------------------------------------------- |
+| `Status`                | `InvoiceStatusDraft`, `Open`, `Paid`, `Void`, or `Uncollectible` |
+| `SubscriptionID`        | Set when the invoice originates from recurring billing           |
+| `CustomerID`            | When available                                                   |
+| `Number`                | The provider's human-readable invoice number, when assigned      |
+| `Amount` / `AmountPaid` | Minor units; `nil` when the provider doesn't report them         |
+| `HostedInvoiceURL`      | Stripe's `hosted_invoice_url`, Razorpay's `short_url`            |
+| `PDFURL`                | Downloadable PDF link (Stripe only); empty otherwise             |
+| `DueDate` / `PaidAt`    | Zero value when not set/reported                                 |
 
 `inv.IsPaid()` is shorthand for `Status == InvoiceStatusPaid`.
 

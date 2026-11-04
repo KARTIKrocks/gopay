@@ -30,25 +30,25 @@ client, err := payment.NewClient(provider)
 
 ## `Config`
 
-| Field | Set via | Notes |
-| --- | --- | --- |
-| `SecretKey` | `WithSecretKey` | Required |
-| `WebhookSecret` | `WithWebhookSecret` | Required to call `VerifyWebhook` |
-| `HTTPClient` | `WithHTTPClient` | Optional, for custom timeouts/transport |
+| Field               | Set via                 | Notes                                                                                                                          |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `SecretKey`         | `WithSecretKey`         | Required                                                                                                                       |
+| `WebhookSecret`     | `WithWebhookSecret`     | Required to call `VerifyWebhook`                                                                                               |
+| `HTTPClient`        | `WithHTTPClient`        | Optional, for custom timeouts/transport                                                                                        |
 | `MaxNetworkRetries` | `WithMaxNetworkRetries` | Optional; stripe-go's own retries, default 2. Set 0 under a retrying `Client` — see [Retries & timeouts](./retries.md) _0.10+_ |
 
 ## Support matrix
 
-| Capability | Supported |
-| --- | --- |
-| Payments, Refunds | ✓ |
-| Customers | ✓ |
-| Payment Methods | ✓ |
-| Setup Intents | ✓ — the only provider that does |
-| Subscriptions | ✓ (open-ended — `TotalCount` is ignored) |
-| Invoices | ✓ |
-| Webhooks | ✓ (`Stripe-Signature` header) |
-| Listing | ✓ (cursor = object ID, `starting_after`) |
+| Capability        | Supported                                |
+| ----------------- | ---------------------------------------- |
+| Payments, Refunds | ✓                                        |
+| Customers         | ✓                                        |
+| Payment Methods   | ✓                                        |
+| Setup Intents     | ✓ — the only provider that does          |
+| Subscriptions     | ✓ (open-ended — `TotalCount` is ignored) |
+| Invoices          | ✓                                        |
+| Webhooks          | ✓ (`Stripe-Signature` header)            |
+| Listing           | ✓ (cursor = object ID, `starting_after`) |
 
 ## Notes
 

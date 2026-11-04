@@ -26,11 +26,11 @@ A call is retried only when its error is transient — `payment.IsRetryable(err)
 is true, meaning `ErrRateLimited` or `ErrProviderUnavailable` (see
 [Errors](./errors.md)) — **and** resending it is safe:
 
-| Operation | Retried? |
-| --- | --- |
-| Reads: `Get…`, `List…` | Always |
-| `CreatePayment`, `Refund`, `CreateSetupIntent`, `CreatePlan`, `CreateSubscription` | Only with an `IdempotencyKey`, and only on a provider that honors it |
-| `CapturePayment`, `CancelPayment`, `FullRefund`, customer and payment-method writes, cancellations, `VerifyWebhook` | Never |
+| Operation                                                                                                           | Retried?                                                             |
+| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Reads: `Get…`, `List…`                                                                                              | Always                                                               |
+| `CreatePayment`, `Refund`, `CreateSetupIntent`, `CreatePlan`, `CreateSubscription`                                  | Only with an `IdempotencyKey`, and only on a provider that honors it |
+| `CapturePayment`, `CancelPayment`, `FullRefund`, customer and payment-method writes, cancellations, `VerifyWebhook` | Never                                                                |
 
 Declines, validation failures, and bad credentials are never retried.
 
@@ -53,10 +53,10 @@ would capture twice.
 A provider declares that it honors idempotency keys by implementing
 `payment.IdempotentProvider`:
 
-| Provider | Honors keys | Effect |
-| --- | --- | --- |
-| Stripe | Yes — `Idempotency-Key` header | Keyed writes are retried |
-| PayPal | Yes — `PayPal-Request-Id` header | Keyed writes are retried |
+| Provider | Honors keys                         | Effect                              |
+| -------- | ----------------------------------- | ----------------------------------- |
+| Stripe   | Yes — `Idempotency-Key` header      | Keyed writes are retried            |
+| PayPal   | Yes — `PayPal-Request-Id` header    | Keyed writes are retried            |
 | Razorpay | No — its API has no idempotency key | Writes are never retried; reads are |
 
 A third-party provider should implement `IdempotentProvider` only if it
