@@ -51,7 +51,7 @@ jobs:
       # by every job, reporting each root-module finding four times over. With
       # it, ../ is outside the source root, so only the "." job scans the root.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.39.1
+        uses: github/codeql-action/init@v4.39.3
         with:
           languages: go
           source-root: ${{ matrix.module }}
@@ -66,6 +66,6 @@ jobs:
         run: go build ./...
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.39.1
+        uses: github/codeql-action/analyze@v4.39.3
         with:
           category: "/language:go/module:${{ matrix.module }}"
